@@ -72,4 +72,18 @@ Explicit over terse (`lab` would collide): `illumina-lab = illumina_lab.cli:main
 
 ## D18 — The lab compares executors, not just illumina versions
 
+## D18 — The lab compares executors, not just illumina versions
+
 The Runner protocol and the facts/judge/fitness pipeline are executor-agnostic. A baseline agent — a vanilla prompted agent, or an off-the-shelf coding agent via harness2's substrates — is a second driver behind the same Runner seam, run against the same canaries, harvested into the same facts schema, joined to the same ground truth, scored by the same fitness. That yields the "illumina vs a normal agent" scoreboard: the baseline every illumina improvement claim is measured against. Pinned external baselines live under `vendor/` like azimo.
+
+## D19 — Canary data lives in the training-set from day one
+
+No in-lab fixtures: the lab's first canaries (the four seeded honk snapshots) were authored directly in `illumina-training-set`, pinned as `vendor/illumina-training-set`. The format is validated against its final home immediately, ground truth is version-pinned (every experiment records which training-set SHA judged it), and v1 has no migration. Lab unit tests use synthetic tmp_path stores; integration tests use the submodule.
+
+## D20 — The leak boundary is a type boundary
+
+Execution stages are typed to accept only `CanaryPointer` (id/pack/target/snapshot_sha) — a type with no ground-truth fields — so "ground truth never reaches the detector" (D8) is enforced by the shapes, not by discipline. Only the judge receives a full `Canary` (pointer + bugs). The runner builds its subprocess env from a pointer, so no code path can serialize the answer key into a run.
+
+## D21 — Folds split by codebase namespace
+
+The training-set groups snapshots under `canaries/<codebase>/`, so one codebase may carry several snapshots (different commits, different coexisting bug subsets). Train/eval/test splits therefore assign whole namespaces to folds, never individual snapshots or bugs — two plether snapshots in different folds would leak codebase-specific tuning into the test fold.
