@@ -1,4 +1,4 @@
-"""The registry's data shapes — what a canary IS, as code (D14).
+"""The canary store's data shapes — what a canary IS, as code (D14).
 
 The data lives in the training-set repo (``vendor/illumina-training-set``), one
 directory per canary: ``canary.json`` (the :class:`CanaryPointer` — the binding
@@ -31,7 +31,7 @@ SEVERITIES = ("critical", "high", "medium", "low", "informational")
 
 
 class RegistryError(Exception):
-    """A registry entry is malformed or inconsistent — fail fast, naming the entry."""
+    """A canary-store entry is malformed or inconsistent — fail fast, naming the entry."""
 
 
 def _kebab(v: str) -> str:

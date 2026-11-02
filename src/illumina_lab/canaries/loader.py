@@ -1,15 +1,15 @@
-"""The registry loader — read and validate canary entries from the training-set.
+"""The canary-store loader — read and validate canary entries from the training-set.
 
-The registry's home is the ``vendor/illumina-training-set`` submodule — the
+The canary store's home is the ``vendor/illumina-training-set`` submodule — the
 ground-truth store, version-pinned by the lab so every experiment records which
-ground truth judged it. ``ILAB_REGISTRY`` overrides the location (synthetic
-registries in tests, a curated checkout elsewhere). Layout:
+ground truth judged it. ``ILAB_CANARY_STORE`` overrides the location (synthetic
+stores in tests, a curated checkout elsewhere). Layout:
 ``canaries/<codebase>/<snapshot>/{canary.json,bugs.json}`` — one canary is one
 codebase at one commit, snapshots group under their codebase, and the id
 convention is ``<codebase>-<snapshot>``, enforced here.
 
-The loader merges ``canary.json`` (:class:`~illumina_lab.registry.models.CanaryPointer`)
-and ``bugs.json`` into a :class:`~illumina_lab.registry.models.Canary`. The
+The loader merges ``canary.json`` (:class:`~illumina_lab.canaries.models.CanaryPointer`)
+and ``bugs.json`` into a :class:`~illumina_lab.canaries.models.Canary`. The
 pointer is the leak-safe part — execution stages see only it (D8).
 
 Validation at this layer is *structural* — shape, id conventions, uniqueness.
@@ -26,23 +26,23 @@ from pathlib import Path
 
 from pydantic import ValidationError
 
-from illumina_lab.registry.models import BugEntry, Canary, CanaryPointer, RegistryError
+from illumina_lab.canaries.models import BugEntry, Canary, CanaryPointer, RegistryError
 
-ENV_VAR = "ILAB_REGISTRY"
+ENV_VAR = "ILAB_CANARY_STORE"
 
 
-def registry_root() -> Path:
-    """Return the registry root: ``$ILAB_REGISTRY`` when set, else the training-set submodule."""
+def store_root() -> Path:
+    """Return the canary store's root: ``$ILAB_CANARY_STORE`` when set, else the training-set submodule."""
     raw = os.environ.get(ENV_VAR, "").strip()
     root = Path(raw).expanduser() if raw else Path(__file__).resolve().parents[3] / "vendor" / "illumina-training-set"
     if not (root / "canaries").is_dir():
-        raise RegistryError(f"no registry at {root} — set {ENV_VAR} or init the submodule: git submodule update --init")
+        raise RegistryError(f"no canary store at {root} — set {ENV_VAR} or init the submodule: git submodule update --init")
     return root
 
 
 def load_canaries(root: Path | None = None) -> list[Canary]:
-    """Load every canary in the registry, sorted by id."""
-    root = root or registry_root()
+    """Load every canary in the store, sorted by id."""
+    root = root or store_root()
     entries = [_load_one(d) for d in sorted((root / "canaries").glob("*/*")) if d.is_dir()]
     return sorted(entries, key=lambda e: e.pointer.id)
 

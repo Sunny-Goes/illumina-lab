@@ -1,9 +1,9 @@
-"""Registry model tests — the pointer/bug/canary contract, offline over synthetic data."""
+"""Canary model tests — the pointer/bug/canary contract, offline over synthetic data."""
 
 import pytest
 from pydantic import ValidationError
 
-from illumina_lab.registry import BugEntry, Canary, CanaryPointer
+from illumina_lab.canaries import BugEntry, Canary, CanaryPointer
 
 SHA = "a" * 40
 

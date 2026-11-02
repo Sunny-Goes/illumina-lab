@@ -1,12 +1,12 @@
-"""Registry loader tests — synthetic registries in tmp_path, plus the real submodule when present."""
+"""Canary-store loader tests — synthetic registries in tmp_path, plus the real submodule when present."""
 
 import json
 from pathlib import Path
 
 import pytest
 
-from illumina_lab.registry import loader
-from illumina_lab.registry.models import RegistryError
+from illumina_lab.canaries import loader
+from illumina_lab.canaries.models import RegistryError
 
 SHA = "b" * 40
 
@@ -66,17 +66,17 @@ def test_malformed_json_named_as_registry_error(tmp_path):
         loader.load_canaries(tmp_path)
 
 
-def test_registry_root_env_override(monkeypatch, tmp_path):
+def test_store_root_env_override(monkeypatch, tmp_path):
     _write_canary(tmp_path, "alpha", "s2")
     monkeypatch.setenv(loader.ENV_VAR, str(tmp_path))
-    assert loader.registry_root() == tmp_path
+    assert loader.store_root() == tmp_path
     assert [e.pointer.id for e in loader.load_canaries()] == ["alpha-s2"]
 
 
-def test_registry_root_missing_hints_submodule(monkeypatch, tmp_path):
+def test_store_root_missing_hints_submodule(monkeypatch, tmp_path):
     monkeypatch.setenv(loader.ENV_VAR, str(tmp_path / "nope"))
     with pytest.raises(RegistryError, match="git submodule update --init"):
-        loader.registry_root()
+        loader.store_root()
 
 
 def test_real_training_set_loads():
