@@ -1,0 +1,35 @@
+# Architecture (skeleton)
+
+Component shapes and data formats as agreed. Everything here is a v0 design target, not yet implemented — the decisions behind each are in [decisions.md](decisions.md) (referenced as D*n*).
+
+## Components
+
+```
+registry/       canary entries (read from illumina-training-set; D14)
+forge/          registry → azimo pack store (pack.json, win table, target manifests; D7)
+orchestrator/   run matrix (canary × win × seed; D5), folds, Runner pool (D12), ledger
+harvest/        run folder + final state → facts (D4)
+judge/          facts × ground truth → per-bug outcomes + failure taxonomy (D6)
+fitness/        pluggable pure functions over facts, registered by name (D4)
+```
+
+The optimizer is **not** a component — it is a separate repo behind the contract in D13.
+
+## Data formats (to be pinned down in v0)
+
+- **Canary entry** — `{ id, git_url, snapshot_sha, in_scope, bugs: [{ id, fix_commit, hunk, severity, win }], source_links }`. Validated per D2/D3/D8.
+- **RunSpec** — one matrix cell: `{ pack, target, win, seed, models, run_id, label }`, self-contained and serializable (D12).
+- **Ledger** — append-only JSONL: one row per submitted/finished run, join key `run_id` (D10).
+- **Facts** — append-only `facts.jsonl`: per run — identity (run_id, spec hash, azimo SHA, target SHA), findings by status, coverage (files read, tool calls, LLM calls, errors), tokens/cost, durations, models per role (D4).
+
+## Naming (D10)
+
+- experiment spec hash: `exp-<sha12>`
+- execution label: `exp-<sha12>-<yyyymmdd>-<n>` (→ `ILLUMINA_RUN_LABEL`, `LANGSMITH_PROJECT`)
+- beam run id: `<label>-<canary>-<win>-s<k>` (passed as invoke input)
+
+## Seams into azimo
+
+- Runs: in-process driver calling `illumina.cli.run_graph`, one subprocess per beam (D9).
+- Results: the returned final state + `run.json` + the evidence folder tree (until azimo#172 lands).
+- Replays: `--replay` for the decider seam (generic env var after the #172 buglet fix); PoC replay after #172.
