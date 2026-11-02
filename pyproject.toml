@@ -12,6 +12,14 @@ dev = [
     "ruff>=0.8.2",
 ]
 
+[tool.pytest.ini_options]
+addopts = "--strict-markers"
+testpaths = ["tests"]
+norecursedirs = ["vendor"]  # the engine's suite runs in the engine's env, never here
+markers = [
+    "live: tests that run real illumina beams through azimo (real tokens, real minutes) — run only with ILAB_LIVE_TESTS=1",
+]
+
 [build-system]
 requires = ["setuptools>=73.0.0", "wheel"]
 build-backend = "setuptools.build_meta"
