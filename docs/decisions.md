@@ -69,3 +69,7 @@ An experiment file is a declarative spec (canaries × wins × seeds × models ×
 ## D17 — The console script is `illumina-lab`
 
 Explicit over terse (`lab` would collide): `illumina-lab = illumina_lab.cli:main`, mirroring azimo's `illumina = illumina.cli:main`.
+
+## D18 — The lab compares executors, not just illumina versions
+
+The Runner protocol and the facts/judge/fitness pipeline are executor-agnostic. A baseline agent — a vanilla prompted agent, or an off-the-shelf coding agent via harness2's substrates — is a second driver behind the same Runner seam, run against the same canaries, harvested into the same facts schema, joined to the same ground truth, scored by the same fitness. That yields the "illumina vs a normal agent" scoreboard: the baseline every illumina improvement claim is measured against. Pinned external baselines live under `vendor/` like azimo.
