@@ -56,7 +56,7 @@ When the lab launches a beam (the driver, arriving in PR 4), the subprocess runs
 
 ## Status & roadmap
 
-Template stage — the repo is being set up. See [docs/roadmap.md](docs/roadmap.md) for full milestone definitions.
+v0 underway — PR 1 (foundation). See [docs/roadmap.md](docs/roadmap.md) for full milestone definitions and [docs/plans/v0.md](docs/plans/v0.md) for the PR plan.
 
 | milestone | goal |
 | --- | --- |
