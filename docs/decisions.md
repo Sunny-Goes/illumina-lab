@@ -57,3 +57,15 @@ The lab exposes exactly three things: an **experiment API** (submit run matrix �
 ## D14 — Schemas are N-agnostic from day one
 
 The registry, run matrix, ledger, and facts schema never special-case one codebase. Rollout is purely registry growth: 1 codebase → 2 → N.
+
+## D15 — Storage: one seam module, local files first, DB-shaped records
+
+All lab persistence (ledger, facts, artifact paths) flows through a single workspace module — no scattered file access, but no storage abstraction ceremony either. Ledger and facts are flat, join-keyed JSONL records (`run_id` joins everything) that map 1:1 to table rows, so a DuckDB/SQLite/Postgres backend is a one-module swap later. Run artifacts (evidence trees, transcripts) stay files under any backend; a DB would hold metadata only.
+
+## D16 — Experiments are data, tests are code
+
+An experiment file is a declarative spec (canaries × wins × seeds × models × fitness selection), committed and hashed into the `exp-<sha12>` id — it asserts nothing by itself. The pytest suite verifies the lab's own code. The live-gated acceptance test consumes an experiment and asserts run *validity* (the coverage gate: the hunt actually happened), never that a bug was caught — caught/missed is the metric, read off the scoreboard, not a CI assertion.
+
+## D17 — The console script is `illumina-lab`
+
+Explicit over terse (`lab` would collide): `illumina-lab = illumina_lab.cli:main`, mirroring azimo's `illumina = illumina.cli:main`.
