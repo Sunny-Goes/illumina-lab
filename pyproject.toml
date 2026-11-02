@@ -4,7 +4,9 @@ version = "0.0.1"
 description = "Evaluation and experimentation harness for illumina — canary runs, facts, pluggable fitness."
 license = { text = "MIT" }
 requires-python = ">=3.10"
-dependencies = []
+dependencies = [
+    "pydantic>=2.9",
+]
 
 [dependency-groups]
 dev = [
