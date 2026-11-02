@@ -1,32 +1,40 @@
-"""Registry model tests — the canary/bug contract, offline over synthetic data."""
+"""Registry model tests — the pointer/bug/canary contract, offline over synthetic data."""
 
 import pytest
 from pydantic import ValidationError
 
-from illumina_lab.registry import BugEntry, Canary
+from illumina_lab.registry import BugEntry, Canary, CanaryPointer
 
 SHA = "a" * 40
 
 
-def test_canary_parses_minimal():
-    c = Canary(id="honk-precompile-success-unchecked", pack="honk", target="precompile-success-unchecked", snapshot_sha=SHA)
-    assert c.links == [] and c.notes == ""
+def test_pointer_parses_minimal():
+    p = CanaryPointer(id="honk-all-canaries", pack="honk", target="all-canaries", snapshot_sha=SHA)
+    assert p.links == [] and p.notes == ""
 
 
-def test_canary_requires_kebab_ids():
+def test_pointer_requires_kebab_ids():
     with pytest.raises(ValidationError, match="kebab"):
-        Canary(id="Honk_Canary", pack="honk", target="t", snapshot_sha=SHA)
+        CanaryPointer(id="Honk_Canary", pack="honk", target="t", snapshot_sha=SHA)
 
 
-def test_canary_requires_full_sha():
+def test_pointer_requires_full_sha():
     with pytest.raises(ValidationError, match="40-hex"):
-        Canary(id="c", pack="honk", target="t", snapshot_sha="abc123")
+        CanaryPointer(id="c", pack="honk", target="t", snapshot_sha="abc123")
 
 
-def test_canary_forbids_a_bugs_field():
-    # the ground truth lives in the sibling bugs.json — a merged file must fail loud
+def test_pointer_forbids_a_bugs_field():
+    # the leak tripwire: ground truth lives in the sibling bugs.json — a merged file must fail loud
     with pytest.raises(ValidationError):
-        Canary(id="c", pack="honk", target="t", snapshot_sha=SHA, bugs=[])
+        CanaryPointer(id="c", pack="honk", target="t", snapshot_sha=SHA, bugs=[])
+
+
+def test_canary_merges_pointer_and_bugs(tmp_path):
+    p = CanaryPointer(id="c", pack="honk", target="t", snapshot_sha=SHA)
+    c = Canary(pointer=p, bugs=[BugEntry(id="b1", files=["A.sol"])], root=tmp_path)
+    assert c.pointer.pack == "honk"
+    assert c.bugs[0].id == "b1"
+    assert c.root == tmp_path
 
 
 def test_bug_requires_a_file():
