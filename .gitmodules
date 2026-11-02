@@ -1,0 +1,4 @@
+[submodule "vendor/azimo"]
+	path = vendor/azimo
+	url = https://github.com/Sunny-Goes/azimo.git
+	branch = drop-poc-templates
