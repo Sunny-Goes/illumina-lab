@@ -62,3 +62,9 @@ def ensure() -> Path:
     root = workspace_root()
     (root / "artifacts").mkdir(parents=True, exist_ok=True)
     return root
+
+
+def execution_labels() -> list[str]:
+    """Return the existing execution labels (artifact dir names) — the label minter's taken-set."""
+    root = workspace_root() / "artifacts"
+    return sorted(d.name for d in root.iterdir() if d.is_dir()) if root.is_dir() else []
