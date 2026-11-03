@@ -23,7 +23,7 @@ def test_records_live_under_root(monkeypatch, tmp_path):
     assert workspace.ledger_path() == tmp_path / "ledger.jsonl"
     assert workspace.facts_path() == tmp_path / "facts.jsonl"
     assert workspace.run_dir(label, "run-abc") == tmp_path / "artifacts" / label / "run-abc"
-    assert workspace.illumina_cache_dir(label) == tmp_path / "illumina-cache" / label
+    assert workspace.illumina_cache() == tmp_path / "illumina-cache"
 
 
 def test_ensure_creates_layout(monkeypatch, tmp_path):
