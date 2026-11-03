@@ -24,8 +24,8 @@ The optimizer is **not** a component — it is a separate repo behind the contra
   (the `CanaryPointer`: id, pack, target, snapshot_sha) + `bugs.json` (`BugEntry` rows:
   files, severity, win, source). Validated per D2/D3/D8 and cross-checked against the
   engine's store.
-- **RunSpec** — one matrix cell: `{ pack, target, win, seed, models, run_id, label }`, self-contained and serializable (D12).
-- **Ledger** — append-only JSONL: one row per submitted/finished run, join key `run_id` (D10).
+- **RunSpec** — one matrix cell: `{ run_id, label, canary_id, pack, target, win, seed, models }`, self-contained and serializable (D12).
+- **Ledger** — append-only JSONL, one row per run *event* (`submitted`/`running`/`finished`/`failed`): `{ts, event, run_id, label, spec, cell: {canary, win, seed}, …}`. A run's state is its latest event; dedupe keys on (spec hash, canary, win, seed) since run ids embed the execution label (D10).
 - **Facts** — append-only `facts.jsonl`: per run — identity (run_id, spec hash, azimo SHA, target SHA), findings by status, coverage (files read, tool calls, LLM calls, errors), tokens/cost, durations, models per role (D4).
 
 ## Naming (D10)

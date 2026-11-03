@@ -22,6 +22,15 @@ from illumina_lab import illumina_interface
 from illumina_lab.canaries.models import Canary, RegistryError
 
 
+def pack_win_ids(pack: str, store: Path | None = None) -> set[str]:
+    """Return a pack's win-table ids from the engine's store; empty when the table is absent."""
+    store = store or illumina_interface.store()
+    path = store / "packs" / pack / "win_conditions.json"
+    if not path.is_file():
+        return set()
+    return {str(r.get("id", "")) for r in _read_rows(path, pack)}
+
+
 def validate_binding(canary: Canary, store: Path | None = None) -> None:
     """Check one canary against the engine's store; raise RegistryError listing every violation."""
     store = store or illumina_interface.store()
