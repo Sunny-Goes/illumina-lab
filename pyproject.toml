@@ -47,5 +47,6 @@ lint.ignore = [
 ]
 [tool.ruff.lint.per-file-ignores]
 "tests/*" = ["D", "UP"]
+"src/illumina_lab/driver.py" = ["T201"]  # the driver's prints are its log lines — the runner tees them to driver.log
 [tool.ruff.lint.pydocstyle]
 convention = "google"
