@@ -121,3 +121,27 @@ def _read_json(path: Path) -> dict[str, Any]:
         return json.loads(path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError):
         return {}
+
+
+def read_facts() -> list[FactsRow]:
+    """Read every facts row, in append order; empty when no facts log exists yet."""
+    path = workspace.facts_path()
+    if not path.is_file():
+        return []
+    return [FactsRow(**json.loads(line)) for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
+
+
+def harvest_execution(label: str) -> list[FactsRow]:
+    """Harvest every run of one execution into facts.jsonl — idempotent per run_id. Returns the new rows."""
+    root = workspace.artifacts_dir(label)
+    if not root.is_dir():
+        return []
+    known = {row.run_id for row in read_facts()}
+    new = [harvest_run(label, d.name) for d in sorted(root.iterdir()) if d.is_dir() and d.name not in known]
+    if new:
+        path = workspace.facts_path()
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with path.open("a", encoding="utf-8") as f:
+            for row in new:
+                f.write(row.model_dump_json() + "\n")
+    return new

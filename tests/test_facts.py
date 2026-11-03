@@ -7,7 +7,7 @@ import pytest
 
 from illumina_lab import workspace
 from illumina_lab.experiment import RunSpec
-from illumina_lab.facts import harvest_run
+from illumina_lab.facts import harvest_execution, harvest_run, read_facts
 from illumina_lab.orchestrator import ledger
 
 LABEL = "exp-x-smoke-20261103-1"
@@ -35,17 +35,17 @@ def _ws(monkeypatch, tmp_path):
     return tmp_path
 
 
-def _fabricate(root: Path, *, state: dict | None = None, failed: bool = False) -> None:
-    run_dir = workspace.run_dir(LABEL, RUN_ID)
+def _fabricate(root: Path, *, state: dict | None = None, failed: bool = False, run_id: str = RUN_ID) -> None:
+    run_dir = workspace.run_dir(LABEL, run_id)
     run_dir.mkdir(parents=True)
-    spec = RunSpec(run_id=RUN_ID, label=LABEL, canary_id="cb-snap", pack="honk", target="t", win="griefing", seed=1)
+    spec = RunSpec(run_id=run_id, label=LABEL, canary_id="cb-snap", pack="honk", target="t", win="griefing", seed=1)
     (run_dir / "runspec.json").write_text(spec.model_dump_json())
     (run_dir / "provenance.json").write_text(json.dumps({"azimo_sha": "a" * 40, "training_set_sha": "b" * 40}))
     if failed:
         (run_dir / "error.json").write_text(json.dumps({"traceback": "RuntimeError: boom"}))
     if state is not None:
         (run_dir / "state.json").write_text(json.dumps(state))
-    azimo_dir = workspace.illumina_cache() / "beam" / LABEL / RUN_ID
+    azimo_dir = workspace.illumina_cache() / "beam" / LABEL / run_id
     azimo_dir.mkdir(parents=True)
     (azimo_dir / "run.json").write_text(json.dumps({"models": {"detect": "anthropic:claude-sonnet-4-6"}}))
     ledger.record("finished", spec, "0123456789ab", returncode=0 if not failed else 1, duration_s=612.3)
@@ -82,3 +82,17 @@ def test_harvest_tolerates_missing_azimo_run_json(tmp_path):
     (workspace.illumina_cache() / "beam" / LABEL / RUN_ID / "run.json").unlink()
     row = harvest_run(LABEL, RUN_ID)
     assert row.ok and row.models == {}
+
+
+def test_harvest_execution_appends_each_run_once(tmp_path):
+    _fabricate(tmp_path, state=STATE)
+    _fabricate(tmp_path, state=STATE, run_id=f"{LABEL}-cb-snap-griefing-s2")
+    new = harvest_execution(LABEL)
+    assert {r.run_id for r in new} == {RUN_ID, f"{LABEL}-cb-snap-griefing-s2"}
+    assert harvest_execution(LABEL) == []  # idempotent: a re-harvest adds nothing
+    assert len(read_facts()) == 2
+    assert read_facts()[0].coverage.llm_calls == 14
+
+
+def test_harvest_execution_without_artifacts(tmp_path):
+    assert harvest_execution("exp-nothing-here-20261103-1") == []
