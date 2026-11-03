@@ -43,7 +43,7 @@ The full register with rationale lives in [docs/decisions.md](docs/decisions.md)
 git clone --recurse-submodules https://github.com/Sunny-Goes/illumina-lab.git
 ```
 
-azimo (the engine under test) is a submodule at `vendor/azimo`: **a pinned pointer, not a copy**. This repo commits only a gitlink (azimo's URL + a recorded commit SHA); azimo's files never enter this repo's history — `--recurse-submodules` fetches them from azimo's own repo at exactly that commit. Moving the pin is `git -C vendor/azimo checkout <sha-or-branch>` plus committing the new gitlink. Currently pinned to the head of azimo PR [#171](https://github.com/Sunny-Goes/azimo/pull/171) (`drop-poc-templates`); it moves to `main` once that lands, and later to autoresearch branches as the optimizer produces them.
+azimo (the engine under test) is a submodule at `vendor/azimo`: **a pinned pointer, not a copy**. This repo commits only a gitlink (azimo's URL + a recorded commit SHA); azimo's files never enter this repo's history — `--recurse-submodules` fetches them from azimo's own repo at exactly that commit. Moving the pin is `git -C vendor/azimo checkout <sha-or-branch>` plus committing the new gitlink. Currently pinned to the head of azimo PR [#174](https://github.com/Sunny-Goes/azimo/pull/174) (`run-graph-run-id`, itself stacked on [#171](https://github.com/Sunny-Goes/azimo/pull/171)) — the `run_graph(run_id=…)` support the runner needs; it moves to `main` once those land, and later to autoresearch branches as the optimizer produces them.
 
 ### The two venvs
 
