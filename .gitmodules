@@ -1,7 +1,7 @@
 [submodule "vendor/azimo"]
 	path = vendor/azimo
 	url = https://github.com/Sunny-Goes/azimo.git
-	branch = drop-poc-templates
+	branch = master
 [submodule "vendor/illumina-training-set"]
 	path = vendor/illumina-training-set
 	url = https://github.com/Sunny-Goes/illumina-training-set.git

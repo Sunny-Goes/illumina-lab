@@ -63,7 +63,7 @@ def test_stamp_env_maps_the_runspec():
     assert env["ILLUMINA_MODEL_BUILD"] == "openai:mimo-v2-flash"
     assert env["LANGSMITH_PROJECT"] == SPEC.label
     assert env["ILLUMINA_STORE"].endswith("vendor/azimo/store")
-    assert env["ILLUMINA_CACHE"].endswith(f"illumina-cache/{SPEC.label}")
+    assert env["ILLUMINA_CACHE"].endswith("illumina-cache")
 
 
 def test_stamp_env_omits_an_unset_default_model():
@@ -82,6 +82,8 @@ def test_main_dumps_state(tmp_path):
     assert state["findings"] == [{"status": "confirmed"}]
     assert state["poc"] == "x"  # a Path serialized to str
     assert json.loads((run / "runspec.json").read_text())["run_id"] == SPEC.run_id
+    provenance = json.loads((run / "provenance.json").read_text())
+    assert len(provenance["azimo_sha"]) == 40 and provenance["run_id"] == SPEC.run_id
     assert os.environ["ILLUMINA_HONK_TARGET"] == "precompile-success-unchecked"
 
 

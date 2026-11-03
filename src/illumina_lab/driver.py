@@ -18,8 +18,37 @@ import os
 import sys
 import traceback
 from dataclasses import asdict, is_dataclass
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
+
+from pydantic import BaseModel, ConfigDict
+
+
+class RunProvenance(BaseModel):
+    """What the driver records at spawn — the pins that produced this run (D10)."""
+
+    model_config = ConfigDict(frozen=True)
+
+    run_id: str
+    label: str
+    azimo_sha: str
+    training_set_sha: str
+    started_at: str
+
+
+def _provenance(spec: Any) -> RunProvenance:
+    """Stamp the run's provenance: both pins plus when it started."""
+    from illumina_lab import illumina_interface
+    from illumina_lab.canaries.loader import store_root
+
+    return RunProvenance(
+        run_id=spec.run_id,
+        label=spec.label,
+        azimo_sha=illumina_interface.pin_sha(illumina_interface.root()),
+        training_set_sha=illumina_interface.pin_sha(store_root()),
+        started_at=datetime.now(timezone.utc).isoformat(),
+    )
 
 
 def stamp_env(spec: Any) -> dict[str, str]:
@@ -33,7 +62,7 @@ def stamp_env(spec: Any) -> dict[str, str]:
 
     env = {
         "ILLUMINA_STORE": str(illumina_interface.store()),
-        "ILLUMINA_CACHE": str(workspace.illumina_cache_dir(spec.label)),
+        "ILLUMINA_CACHE": str(workspace.illumina_cache()),
         "ILLUMINA_RUN_LABEL": spec.label,
         f"ILLUMINA_{spec.pack.upper()}_TARGET": spec.target,
         "LANGSMITH_PROJECT": spec.label,
@@ -73,6 +102,7 @@ def main(argv: list[str]) -> int:
     run = workspace.run_dir(spec.label, spec.run_id)
     run.mkdir(parents=True, exist_ok=True)
     (run / "runspec.json").write_text(spec_path.read_text(encoding="utf-8"))  # the exact bytes received
+    (run / "provenance.json").write_text(_provenance(spec).model_dump_json(indent=1) + "\n", encoding="utf-8")
     print(f"driver: {spec.run_id} — beam {spec.pack}:{spec.win} target {spec.target}", flush=True)
     try:
         from illumina.cli import run_graph

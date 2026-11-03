@@ -13,7 +13,8 @@ Layout:
     ├── ledger.jsonl                    # one row per run event (submit/start/finish/fail)
     ├── facts.jsonl                     # one row per harvested run
     ├── artifacts/<label>/<run_id>/     # what the lab wrote about a run (spec, state dump, logs)
-    └── illumina-cache/<label>/         # the driver's ILLUMINA_CACHE: azimo's evidence tree
+    └── illumina-cache/beam/<label>/    # the driver's ILLUMINA_CACHE — azimo's evidence tree
+                                        #   (its RUN_LABEL nests per-execution under it)
 """
 
 from __future__ import annotations
@@ -52,9 +53,9 @@ def run_dir(label: str, run_id: str) -> Path:
     return artifacts_dir(label) / run_id
 
 
-def illumina_cache_dir(label: str) -> Path:
-    """Return the ``ILLUMINA_CACHE`` the driver sets for one execution's beam runs."""
-    return workspace_root() / "illumina-cache" / label
+def illumina_cache() -> Path:
+    """Return the ``ILLUMINA_CACHE`` the driver sets — azimo's ``ILLUMINA_RUN_LABEL`` nests per-execution evidence under it."""
+    return workspace_root() / "illumina-cache"
 
 
 def ensure() -> Path:

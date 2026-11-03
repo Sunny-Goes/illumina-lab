@@ -26,7 +26,7 @@ The optimizer is **not** a component — it is a separate repo behind the contra
   engine's store.
 - **RunSpec** — one matrix cell: `{ run_id, label, canary_id, pack, target, win, seed, models }`, self-contained and serializable (D12).
 - **Ledger** — append-only JSONL, one row per run *event* (`submitted`/`running`/`finished`/`failed`): `{ts, event, run_id, label, spec, cell: {canary, win, seed}, …}`. A run's state is its latest event; dedupe keys on (spec hash, canary, win, seed) since run ids embed the execution label (D10).
-- **Facts** — append-only `facts.jsonl`: per run — identity (run_id, spec hash, azimo SHA, target SHA), findings by status, coverage (files read, tool calls, LLM calls, errors), tokens/cost, durations, models per role (D4).
+- **Facts** — append-only `facts.jsonl`, one `FactsRow` per run: identity (run_id, label, spec hash, cell), pins (azimo + training-set SHAs from the driver's `provenance.json`), target commit, findings + by-status counts, poc inputs/runs, aggregated coverage (files read, tool calls, LLM calls, probes, errored), resolved models per role, duration. Sources: state dump + runspec + provenance + azimo's run.json + the ledger. Harvested idempotently per run_id; facts are a re-derivable view, never the truth (D4, D15).
 
 ## Naming (D10)
 
