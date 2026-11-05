@@ -31,6 +31,7 @@ class CoverageFacts(BaseModel):
     tool_calls: dict[str, int] = {}
     probes: int = 0
     hypotheses: int = 0
+    scans: int = 0  # llm_scan entries — 0 means the hunt never happened (the invalid gate)
     errored: str = ""
 
 
@@ -55,6 +56,7 @@ class FactsRow(BaseModel):
     findings_by_status: dict[str, int] = {}
     poc_inputs: int = 0
     poc_runs: list[dict] = []
+    attributions: list[dict] = []
     coverage: CoverageFacts = CoverageFacts()
     models: dict[str, str] = {}
     harvested_at: str = ""
@@ -91,6 +93,7 @@ def harvest_run(label: str, run_id: str, *, now: datetime | None = None) -> Fact
         findings_by_status=by_status,
         poc_inputs=len(state.get("poc_inputs", [])),
         poc_runs=state.get("poc_runs", []),
+        attributions=_read_json(workspace.illumina_cache() / "beam" / label / run_id / "attribution.json").get("records", []),
         coverage=_coverage_facts(state.get("coverage", [])),
         models=run_json.get("models", {}),
         harvested_at=harvested,
@@ -111,6 +114,7 @@ def _coverage_facts(entries: list[dict]) -> CoverageFacts:
         tool_calls=tool_calls,
         probes=len(probes),
         hypotheses=sum(p.get("hypotheses", 0) for p in probes),
+        scans=len(scans),
         errored=next((c["errored"] for c in scans if c.get("errored")), ""),
     )
 
