@@ -45,6 +45,7 @@ DEFAULT_COMMAND = "forge test --match-contract PocTest -vvv"
 
 
 def forge_binary() -> str | None:
+    """Return the forge to run: ``ILLUMINA_FORGE``, else ``forge`` on PATH, else the foundryup path."""
     env = os.environ.get("ILLUMINA_FORGE")
     if env:
         return env
@@ -56,6 +57,7 @@ def forge_binary() -> str | None:
 
 
 def main(argv: list[str] | None = None) -> int:
+    """Replay one workspace from CLI arguments and print the verdict as JSON."""
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("workspace", type=Path, help="the persisted PoC workspace (a Foundry project)")
     p.add_argument("--patch", type=Path, help="repo-relative fix patch to apply before running")
@@ -65,17 +67,37 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--timeout", type=int, default=900, help="seconds before the run counts as error (default 900)")
     p.add_argument("--keep", action="store_true", help="keep the scratch copy for inspection")
     args = p.parse_args(argv)
+    out = run(
+        args.workspace,
+        patch=args.patch,
+        strip=args.strip,
+        target_dir=args.target_dir,
+        command=args.command,
+        timeout=args.timeout,
+        keep=args.keep,
+    )
+    print(json.dumps(out, indent=1))
+    return 0 if out["result"] == "win" else 1
 
-    workspace = args.workspace.resolve()
+
+def run(
+    workspace: Path,
+    *,
+    patch: Path | None = None,
+    strip: int = 1,
+    target_dir: str = ".",
+    command: str | None = None,
+    timeout: int = 900,
+    keep: bool = False,
+) -> dict:
+    """Replay one workspace on a scratch copy and return the verdict dict (no printing)."""
+    workspace = workspace.resolve()
     if not (workspace / "foundry.toml").is_file():
-        print(json.dumps({"result": "error", "detail": f"no foundry.toml in {workspace}"}))
-        return 2
+        return {"result": "error", "detail": f"no foundry.toml in {workspace}"}
     forge = forge_binary()
     if forge is None:
-        print(json.dumps({"result": "error", "detail": "no forge found (set ILLUMINA_FORGE)"}))
-        return 2
+        return {"result": "error", "detail": "no forge found (set ILLUMINA_FORGE)"}
 
-    command = args.command
     if command is None:
         recorded = workspace.parent / "run" / "run.json"
         try:
@@ -91,9 +113,9 @@ def main(argv: list[str] | None = None) -> int:
     result, returncode, detail = "win", 0, ""
     log_path = scratch / "replay.log"
     try:
-        if args.patch:
+        if patch:
             applied = subprocess.run(
-                ["git", "apply", "-p", str(args.strip), "--directory", args.target_dir, str(args.patch.resolve())],
+                ["git", "apply", "-p", str(strip), "--directory", target_dir, str(patch.resolve())],
                 cwd=workdir, capture_output=True, text=True, check=False,
             )
             if applied.returncode != 0:
@@ -101,12 +123,12 @@ def main(argv: list[str] | None = None) -> int:
         if result == "win":
             with log_path.open("w") as log:
                 proc = subprocess.run(
-                    command, cwd=workdir, shell=True, stdout=log, stderr=subprocess.STDOUT, timeout=args.timeout, check=False,
+                    command, cwd=workdir, shell=True, stdout=log, stderr=subprocess.STDOUT, timeout=timeout, check=False,
                 )
             returncode = proc.returncode
             result = "win" if returncode == 0 else "fail"
     except subprocess.TimeoutExpired:
-        result, detail = "error", f"timeout after {args.timeout}s"
+        result, detail = "error", f"timeout after {timeout}s"
     except OSError as e:
         result, detail = "error", str(e)
 
@@ -114,10 +136,9 @@ def main(argv: list[str] | None = None) -> int:
            "workdir": str(workdir), "log": str(log_path)}
     if detail:
         out["detail"] = detail
-    print(json.dumps(out, indent=1))
-    if not args.keep:
+    if not keep:
         shutil.rmtree(scratch, ignore_errors=True)
-    return 0 if result == "win" else 1
+    return out
 
 
 if __name__ == "__main__":

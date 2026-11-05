@@ -22,6 +22,9 @@ markers = [
     "live: tests that run real illumina beams through azimo (real tokens, real minutes) — run only with ILAB_LIVE_TESTS=1",
 ]
 
+[project.scripts]
+illumina-lab = "illumina_lab.cli:main"
+
 [build-system]
 requires = ["setuptools>=73.0.0", "wheel"]
 build-backend = "setuptools.build_meta"
