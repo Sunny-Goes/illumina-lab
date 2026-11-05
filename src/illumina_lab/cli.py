@@ -12,9 +12,9 @@ from __future__ import annotations
 
 import sys
 
-from illumina_lab.judge import counterfactual, replay
+from illumina_lab.judge import attribute, counterfactual, replay
 
-_COMMANDS = {"replay": replay.main, "counterfactual": counterfactual.main}
+_COMMANDS = {"replay": replay.main, "counterfactual": counterfactual.main, "attribute": attribute.main}
 
 
 def main(argv: list[str] | None = None) -> int:
