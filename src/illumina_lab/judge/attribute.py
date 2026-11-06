@@ -12,6 +12,8 @@ verdict follows the counterfactual table:
 
 - dies on exactly one fix   → ``confirmed:<bug-id>``;
 - dies on several fixes     → ``confirmed-multiple`` (shared root cause or overlapping fixes — human review);
+- dies on none, but at least one fix broke the build → ``patch-incompatible`` (the PoC's build
+  died under a patch — attribution impossible, curation review);
 - dies on none              → ``candidate-new-bug`` (or a different mechanism — human review).
 
 Records are written to ``attribution.json`` next to the run's ``run.json`` (or the attempt
@@ -68,6 +70,8 @@ def attribute_poc(workspace: Path, bugs: list[dict], canary_dir: Path, *, strip:
     elif died:
         record["verdict"] = "confirmed-multiple"
         record["bugs"] = died
+    elif any(result == "build-error" for result in fixed.values()):
+        record["verdict"] = "patch-incompatible"
     else:
         record["verdict"] = "candidate-new-bug"
     return record

@@ -10,8 +10,11 @@ Verdicts:
                              different mechanism, another bug, or a self-contained simulation.
 - ``not-a-valid-exploit``  — vulnerable: fail/error. Includes the inverted case (fails on buggy,
                              passes on fixed): on-target intent, no valid win on the buggy code.
+- ``patch-incompatible``   — vulnerable: win, fixed: build-error. The patch breaks the PoC's
+                             build (renamed symbol, moved file): nothing learned about the bug —
+                             the patch needs curation review.
 - ``error``                — the harness itself could not produce a verdict (timeout, patch
-                             failure, missing forge).
+                             failure, missing forge, or a vulnerable leg that does not compile).
 
 Example:
     illumina-lab counterfactual .cache/poc/<run>/<hash>/attempt-1/workspace \
@@ -30,12 +33,16 @@ from illumina_lab.judge import replay
 
 def verdict(vulnerable: str, fixed: str) -> str:
     """Map the two replay outcomes to the attribution verdict (validity first)."""
+    if vulnerable == "build-error":
+        return "error"  # the archived workspace does not compile — evidence, not exploit, is broken
     if vulnerable != "win":
         return "not-a-valid-exploit"
     if fixed == "fail":
         return "confirmed"
     if fixed == "win":
         return "not-specific"
+    if fixed == "build-error":
+        return "patch-incompatible"
     return "error"
 
 

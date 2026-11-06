@@ -26,8 +26,10 @@ maps a/barretenberg/sol/src/honk/utils.sol -> lib/target/src/honk/utils.sol.
 For a full target clone (certification), use --strip 1 --target-dir . .
 
 Output: one JSON object {result, returncode, command, workdir, log} on stdout;
-result is "win" (exit 0), "fail" (test failures), or "error" (timeout, missing
-forge, patch failure). The full forge log is preserved next to the scratch copy.
+result is "win" (exit 0), "fail" (test failures with a clean build), "build-error"
+(the workspace does not compile — distinguished from "fail" so a patch that breaks
+compilation never reads as the exploit dying), or "error" (timeout, missing forge,
+patch failure). The full forge log is preserved next to the scratch copy.
 """
 
 from __future__ import annotations
@@ -125,8 +127,15 @@ def run(
                 proc = subprocess.run(
                     command, cwd=workdir, shell=True, stdout=log, stderr=subprocess.STDOUT, timeout=timeout, check=False,
                 )
-            returncode = proc.returncode
-            result = "win" if returncode == 0 else "fail"
+                returncode = proc.returncode
+                if returncode != 0:
+                    # classify the failure: a clean build means the tests genuinely failed;
+                    # a broken build means compilation died (a patch that breaks the build
+                    # must never read as the exploit dying — counterfactual.py's table)
+                    build = subprocess.run(
+                        [forge, "build"], cwd=workdir, stdout=log, stderr=subprocess.STDOUT, timeout=timeout, check=False,
+                    )
+                    result = "fail" if build.returncode == 0 else "build-error"
     except subprocess.TimeoutExpired:
         result, detail = "error", f"timeout after {timeout}s"
     except OSError as e:

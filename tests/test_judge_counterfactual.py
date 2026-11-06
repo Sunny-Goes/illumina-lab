@@ -16,6 +16,9 @@ from illumina_lab.judge.counterfactual import resolve_patch, verdict
         ("fail", "fail", "not-a-valid-exploit"),
         ("error", "fail", "not-a-valid-exploit"),
         ("win", "error", "error"),
+        ("win", "build-error", "patch-incompatible"),  # the patch broke the build — nothing learned
+        ("build-error", "win", "error"),  # the archived evidence itself does not compile
+        ("build-error", "fail", "error"),
     ],
 )
 def test_verdict(vulnerable, fixed, expected):

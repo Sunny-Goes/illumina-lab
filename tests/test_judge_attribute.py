@@ -78,6 +78,17 @@ def test_confirmed_multiple_and_candidate(tmp_path, monkeypatch):
     assert attribute.attribute_run(attempt, canary)[0]["verdict"] == "candidate-new-bug"
 
 
+def test_build_error_never_counts_as_died(tmp_path, monkeypatch):
+    canary = _canary(tmp_path)
+    attempt = _attempt(tmp_path)
+    # a patch that breaks the PoC's build kills nothing — attribution is impossible
+    _script_replay(monkeypatch, fixed={"bug-a.patch": "build-error", "bug-b.patch": "win"})
+    assert attribute.attribute_run(attempt, canary)[0]["verdict"] == "patch-incompatible"
+    # but a genuine die on one fix stands even when another patch is incompatible
+    _script_replay(monkeypatch, fixed={"bug-a.patch": "fail", "bug-b.patch": "build-error"})
+    assert attribute.attribute_run(attempt, canary)[0]["verdict"] == "confirmed:bug-a"
+
+
 def test_recorded_ok_but_replay_loses_is_error(tmp_path, monkeypatch):
     canary = _canary(tmp_path)
     attempt = _attempt(tmp_path)
