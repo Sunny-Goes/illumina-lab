@@ -5,7 +5,9 @@ Subcommands dispatch to their own argparse mains, so each owns its flags and
 
 - ``replay``         — replay a persisted PoC workspace on a scratch copy, optionally patched;
 - ``counterfactual`` — replay the same PoC on the vulnerable and the fixed target and print
-                       the attribution verdict (confirmed / not-specific / not-a-valid-exploit).
+                       the attribution verdict (confirmed / not-specific / not-a-valid-exploit);
+- ``attribute``      — judge every PoC of an archived run against a canary's fix-carrying
+                       bugs and write ``attribution.json`` next to the run's ``run.json``.
 """
 
 from __future__ import annotations
