@@ -40,6 +40,23 @@ def _kebab(v: str) -> str:
     return v
 
 
+class BugSite(BaseModel):
+    """The bug's site at the pinned snapshot: file, function, line ranges.
+
+    ``lines`` are 1-based ``[start, end]`` ranges in the pre-fix snapshot — the
+    preimage of the fix patch's hunks. ``kind`` qualifies the range (e.g.
+    ``"context"`` when the fix only adds lines, so the marked region brackets
+    the insertion point rather than naming removed lines).
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    file: str
+    lines: list[tuple[int, int]] = []
+    kind: str = ""
+    function: str = ""
+
+
 class BugEntry(BaseModel):
     """One ground-truth bug: what exists at the snapshot that a beam should catch.
 
@@ -47,6 +64,12 @@ class BugEntry(BaseModel):
     (D6). ``win`` names the reward-table row of the bound pack expected to
     catch it: an Immunefi-style impact id, cross-checked against the pack's
     win table at load time.
+
+    ``fix``/``sites``/``reference_poc`` are the counterfactual-attribution
+    ground truth (D22): the patch the classifier replays PoCs against, the
+    bug's site at the snapshot, and the curation-side certification artifact.
+    All judge-side only — they must never reach the execution currency
+    (:class:`CanaryPointer`).
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
@@ -57,6 +80,9 @@ class BugEntry(BaseModel):
     win: str = ""
     source: str = ""  # provenance: the audit link / Immunefi page, or "seeded" + fork commit
     notes: str = ""
+    fix: str = ""  # repo-relative fix patch; "" = not attributable by the counterfactual judge
+    reference_poc: str = ""  # certification artifact proving the bug is exploitable at the snapshot
+    sites: list[BugSite] = []
 
     @field_validator("id")
     @classmethod

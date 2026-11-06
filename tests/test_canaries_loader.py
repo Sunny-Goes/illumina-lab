@@ -92,3 +92,17 @@ def test_real_training_set_loads():
         "honk-precompile-success-unchecked",
     ]
     assert len(entries[0].bugs) == 3  # all-canaries carries all three seeded bugs
+
+
+def test_real_training_set_fix_carrying_bug_parses():
+    # pin-drift tripwire: the pinned store's counterfactual ground truth must fit our schema
+    root = Path(loader.__file__).resolve().parents[3] / "vendor" / "illumina-training-set"
+    if not (root / "canaries").is_dir():
+        pytest.skip("training-set submodule not initialized")
+    canary = loader.load_canary("honk-precompile-success-unchecked")
+    bug = canary.bugs[0]
+    assert bug.fix == "fixes/ecmul-success-unchecked.patch"
+    assert (canary.root / bug.fix).is_file()
+    assert bug.reference_poc == "reference/ecmul-success-unchecked"
+    assert bug.sites[0].function == "ecMul"
+    assert bug.sites[0].lines == [(166, 178)]

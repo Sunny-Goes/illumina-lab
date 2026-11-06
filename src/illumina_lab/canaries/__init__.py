@@ -8,9 +8,10 @@ reader/validator (``loader``). The engine under test never sees any of it (D8).
 from illumina_lab.canaries.models import (
     SEVERITIES,
     BugEntry,
+    BugSite,
     Canary,
     CanaryPointer,
     RegistryError,
 )
 
-__all__ = ["SEVERITIES", "BugEntry", "Canary", "CanaryPointer", "RegistryError"]
+__all__ = ["SEVERITIES", "BugEntry", "BugSite", "Canary", "CanaryPointer", "RegistryError"]

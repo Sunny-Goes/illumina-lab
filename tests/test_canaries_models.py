@@ -3,7 +3,7 @@
 import pytest
 from pydantic import ValidationError
 
-from illumina_lab.canaries import BugEntry, Canary, CanaryPointer
+from illumina_lab.canaries import BugEntry, BugSite, Canary, CanaryPointer
 
 SHA = "a" * 40
 
@@ -46,3 +46,38 @@ def test_bug_severity_vocabulary():
     BugEntry(id="b", files=["utils.sol"], severity="critical")
     with pytest.raises(ValidationError, match="severity"):
         BugEntry(id="b", files=["utils.sol"], severity="severe")
+
+
+def test_bug_counterfactual_ground_truth():
+    b = BugEntry(
+        id="b",
+        files=["utils.sol"],
+        fix="fixes/b.patch",
+        reference_poc="reference/b",
+        sites=[{"file": "utils.sol", "lines": [[166, 178]], "kind": "context", "function": "ecMul"}],
+    )
+    assert b.fix == "fixes/b.patch"
+    assert b.reference_poc == "reference/b"
+    assert b.sites == [BugSite(file="utils.sol", lines=[(166, 178)], kind="context", function="ecMul")]
+
+
+def test_bug_counterfactual_fields_default_to_absent():
+    b = BugEntry(id="b", files=["A.sol"])
+    assert b.fix == "" and b.reference_poc == "" and b.sites == []
+
+
+def test_bug_forbids_unknown_fields():
+    with pytest.raises(ValidationError):
+        BugEntry(id="b", files=["A.sol"], bogus=1)
+
+
+def test_site_forbids_unknown_fields():
+    with pytest.raises(ValidationError):
+        BugSite(file="A.sol", bogus=1)
+
+
+def test_pointer_serialization_never_carries_ground_truth():
+    # tripwire: if ground-truth fields are ever added to the execution currency, this fails
+    dumped = CanaryPointer(id="c", pack="honk", target="t", snapshot_sha=SHA).model_dump()
+    for key in ("bugs", "files", "severity", "fix", "sites", "reference_poc"):
+        assert key not in dumped
