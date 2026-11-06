@@ -6,7 +6,7 @@ Four milestones. Each has a goal, a scope, and an exit criterion that is checked
 
 **Goal.** One command runs the run matrix (1 canary × 1 win × 1 seed) through azimo and emits facts plus a recall score.
 
-**Scope.** Repo skeleton; azimo as pinned submodule; canary registry entry schema with honk fixture entries; `RunSpec` schema and run ledger (JSONL); the local runner (subprocess-per-beam, per-run env, run-id minting, logs); harvest (run folder + final state → `facts.jsonl`); judge v0 (ground-truth join → per-bug caught/missed, with the coverage gate); the fitness plugin interface with strict recall; the `illumina-lab run` CLI; experiment-spec hashing.
+**Scope.** Repo skeleton; azimo as pinned submodule; canary registry entry schema with honk fixture entries; `RunSpec` schema and run ledger (JSONL); the local runner (subprocess-per-beam, per-run env, run-id minting, logs); harvest (run folder + final state → `facts.jsonl`); judge v0 (counterfactual PoC→bug attribution against fix patches — D22; the coverage gate; per-bug miss taxonomy deferred to v0's PR 10); the fitness plugin interface with strict recall; the `illumina-lab run` CLI; experiment-spec hashing.
 
 **Exit.** `illumina-lab run <experiment>` works end-to-end on a honk canary: ledger, facts, score. A rerun of the same spec dedupes. Every run records azimo SHA and target SHA.
 
