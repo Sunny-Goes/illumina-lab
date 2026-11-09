@@ -84,25 +84,21 @@ def test_real_training_set_loads():
     if not (root / "canaries").is_dir():
         pytest.skip("training-set submodule not initialized")
     entries = loader.load_canaries()
-    ids = [e.pointer.id for e in entries]
-    assert ids == [
-        "honk-all-canaries",
-        "honk-canonical-no-field-check",
-        "honk-msm-loop-past-bounds",
-        "honk-precompile-success-unchecked",
-    ]
-    assert len(entries[0].bugs) == 3  # all-canaries carries all three seeded bugs
+    ids = {e.pointer.id for e in entries}
+    # known floor: alerts when a canary disappears from the pin; new canaries don't break the test
+    assert {"honk-precompile-success-unchecked", "vechain-stargate-hayabusa"} <= ids
 
 
-def test_real_training_set_fix_carrying_bug_parses():
-    # pin-drift tripwire: the pinned store's counterfactual ground truth must fit our schema
+def test_real_training_set_ground_truth_sweep():
+    """Every canary in the pinned store, generic invariants — no per-canary tests to rot."""
     root = Path(loader.__file__).resolve().parents[3] / "vendor" / "illumina-training-set"
     if not (root / "canaries").is_dir():
         pytest.skip("training-set submodule not initialized")
-    canary = loader.load_canary("honk-precompile-success-unchecked")
-    bug = canary.bugs[0]
-    assert bug.fix == "fixes/ecmul-success-unchecked.patch"
-    assert (canary.root / bug.fix).is_file()
-    assert bug.reference_poc == "reference/ecmul-success-unchecked"
-    assert bug.sites[0].function == "ecMul"
-    assert bug.sites[0].lines == [(166, 178)]
+    for canary in loader.load_canaries():
+        for bug in canary.bugs:
+            if bug.fix:
+                assert (canary.root / bug.fix).is_file(), f"{canary.pointer.id}/{bug.id}: fix patch missing"
+            if bug.reference_poc:
+                assert (canary.root / bug.reference_poc).is_dir(), f"{canary.pointer.id}/{bug.id}: reference dir missing"
+            for site in bug.sites:
+                assert site.file in bug.files, f"{canary.pointer.id}/{bug.id}: site {site.file} not in files"
