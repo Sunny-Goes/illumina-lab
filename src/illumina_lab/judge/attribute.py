@@ -1,4 +1,8 @@
-"""Run-level attribution: every PoC of an archived run, judged against the canary's fixes.
+"""The lab's judge: replay and counterfactual attribution of PoC artifacts to ground-truth bugs.
+
+Run-level attribution: every PoC of an archived run, judged against the canary's fixes.
+Execution-level attribution (`attribute_execution`): every finished run of one execution,
+appended to the lab's attributions log.
 
 Discovery accepts either a beam run directory (``beam/<run_id>/`` holding
 ``poc/<hash>/attempt-*/``) or a single attempt directory (holding ``workspace/`` and
@@ -17,16 +21,105 @@ verdict follows the counterfactual table:
 - dies on none              → ``candidate-new-bug`` (or a different mechanism — human review).
 
 Records are written to ``attribution.json`` next to the run's ``run.json`` (or the attempt
-dir), so harvest can read them back without ever re-running replays (D4).
+dir), so harvest can read them back without ever re-running replays (D4), and appended to
+``attributions.jsonl`` — the lab-level judgment log, latest-wins per (run_id, poc), so
+re-attribution against *new* ground truth never rewrites history.
 """
 
 from __future__ import annotations
 
 import argparse
 import json
+from datetime import datetime, timezone
 from pathlib import Path
 
+from illumina_lab import workspace
+from illumina_lab.canaries.loader import load_canary
+from illumina_lab.canaries.models import RegistryError
 from illumina_lab.judge import replay
+from illumina_lab.orchestrator import ledger
+
+
+def read_attributions() -> list[dict]:
+    """Read every attribution row, in append order; empty when no log exists yet."""
+    path = workspace.attributions_path()
+    if not path.is_file():
+        return []
+    return [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
+
+
+def latest_attributions() -> dict[tuple[str, str], dict]:
+    """Return the judgment view: the newest row per (run_id, poc) — re-attribution never rewrites history."""
+    out: dict[tuple[str, str], dict] = {}
+    for row in read_attributions():
+        out[(row["run_id"], row["poc"])] = row
+    return out
+
+
+def attribute_execution(
+    label: str, *, force: bool = False, strip: int = 3, target_dir: str = "lib/target", timeout: int = 900, now: datetime | None = None
+) -> list[dict]:
+    """Attribute every finished run of one execution against its canary's fixes.
+
+    Skips failed runs (``error.json``) and already-attributed runs unless ``force``
+    (re-attribution is how new ground truth reaches old runs — latest-wins in the log).
+    ``strip``/``target_dir`` default to azimo's PoC workspace layout. Returns one dict
+    per processed run: ``{run_id, canary, rows}`` (rows empty for no-PoC runs).
+    """
+    root = workspace.artifacts_dir(label)
+    if not root.is_dir():
+        return []
+    attributed = set() if force else _attributed_run_ids()
+    ts = (now or datetime.now(timezone.utc)).isoformat()
+    results: list[dict] = []
+    for run_artifacts in sorted(root.iterdir()):
+        if not run_artifacts.is_dir():
+            continue
+        run_id = run_artifacts.name
+        if run_id in attributed or (run_artifacts / "error.json").is_file():
+            continue
+        runspec = _read_json(run_artifacts / "runspec.json")
+        canary_id = runspec.get("canary_id", "")
+        cache_run = workspace.illumina_cache() / "beam" / label / run_id
+        if not canary_id or not cache_run.is_dir():
+            continue
+        canary = load_canary(canary_id)
+        records = attribute_run(cache_run, canary.root, strip=strip, target_dir=target_dir, timeout=timeout)
+        (cache_run / "attribution.json").write_text(json.dumps({"records": records}, indent=1) + "\n", encoding="utf-8")
+        rows = [{"label": label, "run_id": run_id, "attributed_at": ts, **r} for r in records]
+        results.append({"run_id": run_id, "canary": canary_id, "rows": rows})
+        spec = ledger.latest_by_run().get(run_id, {}).get("spec", "")
+        ledger.record_event(
+            "attributed",
+            run_id=run_id,
+            label=label,
+            spec=spec,
+            cell={"canary": canary_id, "win": runspec.get("win", ""), "seed": runspec.get("seed", 0)},
+            verdicts=[r["verdict"] for r in records],
+        )
+    new_rows = [row for r in results for row in r["rows"]]
+    if new_rows:
+        path = workspace.attributions_path()
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with path.open("a", encoding="utf-8") as f:
+            for row in new_rows:
+                f.write(json.dumps(row) + "\n")
+    return results
+
+
+def _attributed_run_ids() -> set[str]:
+    """Return the run ids already judged: rows in the attributions log or an `attributed` ledger event (zero-PoC runs)."""
+    from_log = {row["run_id"] for row in read_attributions()}
+    from_ledger = {row["run_id"] for row in ledger.events() if row["event"] == "attributed"}
+    return from_log | from_ledger
+
+
+def _read_json(path: Path) -> dict:
+    """Read one JSON artifact; absent or malformed reads as empty (attribution never dies on a partial run)."""
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {}
 
 
 def discover_pocs(run_dir: Path) -> list[dict]:
@@ -45,6 +138,7 @@ def discover_pocs(run_dir: Path) -> list[dict]:
             "id": str(attempt),
             "workspace": attempt / "workspace",
             "recorded_ok": bool(recorded.get("ok")),
+            "command": recorded.get("command", ""),
         })
     return out
 
@@ -82,7 +176,7 @@ def attribute_run(run_dir: Path, canary_dir: Path, *, strip: int = 1, target_dir
     bugs = [b for b in json.loads((canary_dir / "bugs.json").read_text(encoding="utf-8")) if b.get("fix")]
     records = []
     for poc in discover_pocs(run_dir):
-        record: dict = {"poc": poc["id"], "workspace": str(poc["workspace"])}
+        record: dict = {"poc": poc["id"], "workspace": str(poc["workspace"]), "command": poc["command"]}
         if not poc["recorded_ok"]:
             record["verdict"] = "not-a-valid-exploit"
         else:
@@ -91,24 +185,109 @@ def attribute_run(run_dir: Path, canary_dir: Path, *, strip: int = 1, target_dir
     return records
 
 
+def _print_execution_plan(label: str) -> int:
+    """Print what an execution-level attribution would judge — replay nothing."""
+    root = workspace.artifacts_dir(label)
+    if not root.is_dir():
+        print(f"no artifacts for execution {label!r}")
+        return 1
+    attributed = _attributed_run_ids()
+    print(f"attribution plan for {label}:")
+    for run_artifacts in sorted(root.iterdir()):
+        if not run_artifacts.is_dir():
+            continue
+        run_id = run_artifacts.name
+        runspec = _read_json(run_artifacts / "runspec.json")
+        canary_id = runspec.get("canary_id", "?")
+        if (run_artifacts / "error.json").is_file():
+            status = "failed run — skipped"
+        elif run_id in attributed:
+            status = "already attributed — skipped"
+        else:
+            try:
+                canary = load_canary(canary_id)
+                n = len([b for b in canary.bugs if b.fix])
+                status = f"to judge against {n} fix-carrying bug{'s' if n != 1 else ''}"
+            except RegistryError as e:
+                status = f"BLOCKED: {e}"
+        print(f"  {run_id} [{canary_id}]: {status}")
+    return 0
+
+
+def _print_record(record: dict) -> None:
+    """Print one PoC, human-readable: what ran, the verdict, the per-bug outcomes."""
+    poc = record["poc"]
+    short = f"…{poc[-30:]}" if len(poc) > 30 else poc
+    print(f"• {short}")
+    if record.get("command"):
+        print(f"    command:    {record['command']}")
+    print(f"    verdict:    {record['verdict']}")
+    if record.get("detail"):
+        print(f"    detail:     {record['detail']}")
+    for bug, result in (record.get("fixed") or {}).items():
+        print(f"    fixed[{bug}]: {result}")
+    print(f"    workspace:  {record['workspace']}")
+
+
+def _print_execution_results(label: str, results: list[dict]) -> int:
+    """Print per-run verdicts and the tally; exit 1 when nothing confirmed."""
+    n_pocs = 0
+    confirmed: list[str] = []
+    for r in results:
+        print(f"  {r['run_id']} [{r['canary']}]:")
+        if not r["rows"]:
+            print("    no PoC evidence — marked attributed")
+        for row in r["rows"]:
+            n_pocs += 1
+            confirmed.extend([row["verdict"]] if row["verdict"].startswith("confirmed") else [])
+            poc = row["poc"]
+            short = poc.split("/poc/")[-1] if "/poc/" in poc else poc
+            print(f"    {short}: {row['verdict']}")
+    print(f"{len(results)} runs judged, {n_pocs} PoCs, confirmed: {len(confirmed)} → {workspace.attributions_path()}")
+    return 0 if confirmed else 1
+
+
 def main(argv: list[str] | None = None) -> int:
-    """Attribute all PoCs of an archived run and write attribution.json next to its run.json."""
+    """Attribute PoCs — one run dir, or a whole execution with --label."""
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    p.add_argument("run_dir", type=Path, help="a beam run dir (with poc/) or a single attempt dir (with workspace/ and run/)")
-    p.add_argument("--canary-dir", type=Path, required=True, help="canary directory holding bugs.json and fixes/")
-    p.add_argument("--strip", type=int, default=1, help="git apply -p N (default 1; PoC workspaces need 3)")
-    p.add_argument("--target-dir", default=".", help="where the target lives in the workspace (default .)")
+    p.add_argument("run_dir", type=Path, nargs="?", help="a beam run dir (with poc/) or a single attempt dir (with workspace/ and run/)")
+    p.add_argument("--label", help="attribute every finished run of this execution label")
+    p.add_argument("--force", action="store_true", help="re-attribute already-judged runs (new ground truth)")
+    p.add_argument("--dry-run", action="store_true", help="print the attribution plan, replay nothing")
+    p.add_argument("--canary-dir", type=Path, help="canary directory holding bugs.json and fixes/ (single-run mode)")
+    p.add_argument("--strip", type=int, default=None, help="git apply -p N (default: 1 single-run, 3 for executions)")
+    p.add_argument("--target-dir", default=None, help="where the target lives (default: . single-run, lib/target for executions)")
     p.add_argument("--timeout", type=int, default=900, help="seconds per replay (default 900)")
     p.add_argument("--keep", action="store_true", help="keep the scratch copies for inspection")
+    p.add_argument("--json", action="store_true", help="print the raw records as JSON instead of the readable table")
     p.add_argument("--no-write", action="store_true", help="print the records without writing attribution.json")
     args = p.parse_args(argv)
 
+    if args.label:
+        strip = args.strip if args.strip is not None else 3
+        target_dir = args.target_dir if args.target_dir is not None else "lib/target"
+        if args.dry_run:
+            return _print_execution_plan(args.label)
+        print(f"attributing execution {args.label} (strip={strip}, target-dir={target_dir})")
+        results = attribute_execution(args.label, force=args.force, strip=strip, target_dir=target_dir, timeout=args.timeout)
+        return _print_execution_results(args.label, results)
+
+    if not args.run_dir or not args.canary_dir:
+        p.error("single-run mode needs run_dir and --canary-dir (or use --label for an execution)")
+
     records = attribute_run(
-        args.run_dir, args.canary_dir, strip=args.strip, target_dir=args.target_dir, timeout=args.timeout, keep=args.keep,
+        args.run_dir, args.canary_dir,
+        strip=args.strip if args.strip is not None else 1,
+        target_dir=args.target_dir if args.target_dir is not None else ".",
+        timeout=args.timeout, keep=args.keep,
     )
     if not args.no_write:
         (args.run_dir / "attribution.json").write_text(json.dumps({"records": records}, indent=1) + "\n", encoding="utf-8")
-    print(json.dumps({"records": records}, indent=1))
+    if args.json:
+        print(json.dumps({"records": records}, indent=1))
+    else:
+        for record in records:
+            _print_record(record)
     return 0 if any(r["verdict"].startswith("confirmed") for r in records) else 1
 
 

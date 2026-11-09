@@ -31,6 +31,16 @@ def test_unknown_event_rejected():
         ledger.record("vibing", RUN, SPEC)
 
 
+def test_record_event_by_fields():
+    # for stages that hold run fields, not a RunSpec (the judge attributes from runspec.json)
+    ledger.record_event("attributed", run_id=RUN.run_id, label=RUN.label, spec=SPEC,
+                        cell={"canary": "cb", "win": "w", "seed": 1}, verdicts=["confirmed:b1"])
+    row = json.loads(workspace.ledger_path().read_text().splitlines()[0])
+    assert row["event"] == "attributed" and row["run_id"] == RUN.run_id and row["verdicts"] == ["confirmed:b1"]
+    with pytest.raises(ValueError, match="unknown ledger event"):
+        ledger.record_event("vibing", run_id=RUN.run_id, label=RUN.label, spec=SPEC, cell={})
+
+
 def test_events_empty_without_ledger():
     assert ledger.events() == []
 

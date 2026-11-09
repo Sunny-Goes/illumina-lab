@@ -20,20 +20,32 @@ from illumina_lab import workspace
 from illumina_lab.experiment import RunSpec
 
 #: The ledger's event vocabulary.
-EVENTS = ("submitted", "running", "finished", "failed")
+EVENTS = ("submitted", "running", "finished", "failed", "attributed")
 
 
 def record(event: str, run: RunSpec, spec: str, **extra: Any) -> None:
     """Append one event row for a run. ``spec`` is the experiment's 12-char hash (D10)."""
+    record_event(
+        event,
+        run_id=run.run_id,
+        label=run.label,
+        spec=spec,
+        cell={"canary": run.canary_id, "win": run.win, "seed": run.seed},
+        **extra,
+    )
+
+
+def record_event(event: str, *, run_id: str, label: str, spec: str, cell: dict, **extra: Any) -> None:
+    """Append one event row by fields — for stages (like the judge) that don't hold a RunSpec."""
     if event not in EVENTS:
         raise ValueError(f"unknown ledger event {event!r}; known: {', '.join(EVENTS)}")
     row = {
         "ts": datetime.now(timezone.utc).isoformat(),
         "event": event,
-        "run_id": run.run_id,
-        "label": run.label,
+        "run_id": run_id,
+        "label": label,
         "spec": spec,
-        "cell": {"canary": run.canary_id, "win": run.win, "seed": run.seed},
+        "cell": cell,
         **extra,
     }
     path = workspace.ledger_path()

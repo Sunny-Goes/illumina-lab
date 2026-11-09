@@ -98,7 +98,7 @@ class LocalRunner:
         self.timeout_s = timeout_s
         self.python = python or illumina_interface.python()
         self.module = module
-        self.pythonpath = pythonpath or [Path(__file__).resolve().parents[1]]
+        self.pythonpath = pythonpath or [Path(__file__).resolve().parents[2]]  # the lab's src/
 
     def submit(self, run: RunSpec, spec: str) -> RunHandle:
         """Write the runspec, spawn the driver subprocess, record submitted+running."""
