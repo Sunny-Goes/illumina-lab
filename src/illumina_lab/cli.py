@@ -6,17 +6,20 @@ Subcommands dispatch to their own argparse mains, so each owns its flags and
 - ``replay``         — replay a persisted PoC workspace on a scratch copy, optionally patched;
 - ``counterfactual`` — replay the same PoC on the vulnerable and the fixed target and print
                        the attribution verdict (confirmed / not-specific / not-a-valid-exploit);
-- ``attribute``      — judge every PoC of an archived run against a canary's fix-carrying
-                       bugs and write ``attribution.json`` next to the run's ``run.json``.
+- ``attribute``      — judge PoCs against a canary's fix-carrying bugs: one run dir, or a whole
+                       execution with ``--label`` (``--dry-run`` prints the plan);
+- ``certify``        — pre-beam health gate: prove a canary's ground truth still holds before
+                       spending tokens on beams (the store's own certification harness).
 """
 
 from __future__ import annotations
 
 import sys
 
+from illumina_lab.canaries import certify
 from illumina_lab.judge import attribute, counterfactual, replay
 
-_COMMANDS = {"replay": replay.main, "counterfactual": counterfactual.main, "attribute": attribute.main}
+_COMMANDS = {"replay": replay.main, "counterfactual": counterfactual.main, "attribute": attribute.main, "certify": certify.main}
 
 
 def main(argv: list[str] | None = None) -> int:

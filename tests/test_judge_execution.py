@@ -59,7 +59,9 @@ def _script_replay(monkeypatch, fixed_result="fail"):
 def test_attribute_execution_writes_rows_and_run_json(ws, store, monkeypatch):
     _make_run(ws, "exp-x-20261109-1", "run-1")
     _script_replay(monkeypatch)
-    rows = attribute.attribute_execution("exp-x-20261109-1")
+    results = attribute.attribute_execution("exp-x-20261109-1")
+    assert len(results) == 1 and results[0]["canary"] == "cb-snap"
+    rows = results[0]["rows"]
     assert len(rows) == 1
     assert rows[0]["verdict"] == "confirmed:b1"
     assert rows[0]["run_id"] == "run-1" and rows[0]["label"] == "exp-x-20261109-1"
@@ -71,7 +73,7 @@ def test_attribute_execution_writes_rows_and_run_json(ws, store, monkeypatch):
 def test_attribute_execution_skips_attributed_runs(ws, store, monkeypatch):
     _make_run(ws, "exp-x-20261109-1", "run-1")
     calls = _script_replay(monkeypatch)
-    assert len(attribute.attribute_execution("exp-x-20261109-1")) == 1
+    assert len(attribute.attribute_execution("exp-x-20261109-1")[0]["rows"]) == 1
     n = len(calls)
     assert attribute.attribute_execution("exp-x-20261109-1") == []
     assert len(calls) == n  # no replays on the second pass
@@ -114,7 +116,7 @@ def test_zero_poc_run_is_marked_and_skipped(ws, store, monkeypatch):
     (arts / "runspec.json").write_text(json.dumps({"run_id": "run-1", "canary_id": "cb-snap"}))
     (ws / "illumina-cache" / "beam" / "exp-x-20261109-1" / "run-1").mkdir(parents=True)
     calls = _script_replay(monkeypatch)
-    assert attribute.attribute_execution("exp-x-20261109-1") == []
+    assert attribute.attribute_execution("exp-x-20261109-1")[0]["rows"] == []
     assert attribute.attribute_execution("exp-x-20261109-1") == []
     assert calls == []
     events = [json.loads(line) for line in workspace.ledger_path().read_text().splitlines()]
@@ -128,3 +130,22 @@ def test_unknown_canary_fails_loud(ws, store, monkeypatch):
     _script_replay(monkeypatch)
     with pytest.raises(RegistryError, match="unknown canary"):
         attribute.attribute_execution("exp-x-20261109-1")
+
+
+def test_cli_attribute_label_prints_verdicts(ws, store, monkeypatch, capsys):
+    _make_run(ws, "exp-x-20261109-1", "run-1")
+    _script_replay(monkeypatch)
+    rc = attribute.main(["--label", "exp-x-20261109-1"])
+    out = capsys.readouterr().out
+    assert rc == 0
+    assert "run-1 [cb-snap]: confirmed:b1" in out
+    assert "1 runs judged, 1 PoCs, confirmed: 1" in out
+
+
+def test_cli_attribute_dry_run_replays_nothing(ws, store, monkeypatch, capsys):
+    _make_run(ws, "exp-x-20261109-1", "run-1")
+    calls = _script_replay(monkeypatch)
+    rc = attribute.main(["--label", "exp-x-20261109-1", "--dry-run"])
+    out = capsys.readouterr().out
+    assert rc == 0 and calls == []
+    assert "run-1 [cb-snap]: to judge against 1 fix-carrying bug" in out

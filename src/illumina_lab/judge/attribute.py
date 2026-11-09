@@ -35,6 +35,7 @@ from pathlib import Path
 
 from illumina_lab import workspace
 from illumina_lab.canaries.loader import load_canary
+from illumina_lab.canaries.models import RegistryError
 from illumina_lab.judge import replay
 from illumina_lab.orchestrator import ledger
 
@@ -62,14 +63,15 @@ def attribute_execution(
 
     Skips failed runs (``error.json``) and already-attributed runs unless ``force``
     (re-attribution is how new ground truth reaches old runs — latest-wins in the log).
-    ``strip``/``target_dir`` default to azimo's PoC workspace layout. Returns the new rows.
+    ``strip``/``target_dir`` default to azimo's PoC workspace layout. Returns one dict
+    per processed run: ``{run_id, canary, rows}`` (rows empty for no-PoC runs).
     """
     root = workspace.artifacts_dir(label)
     if not root.is_dir():
         return []
     attributed = set() if force else _attributed_run_ids()
     ts = (now or datetime.now(timezone.utc)).isoformat()
-    new_rows: list[dict] = []
+    results: list[dict] = []
     for run_artifacts in sorted(root.iterdir()):
         if not run_artifacts.is_dir():
             continue
@@ -84,7 +86,8 @@ def attribute_execution(
         canary = load_canary(canary_id)
         records = attribute_run(cache_run, canary.root, strip=strip, target_dir=target_dir, timeout=timeout)
         (cache_run / "attribution.json").write_text(json.dumps({"records": records}, indent=1) + "\n", encoding="utf-8")
-        new_rows.extend({"label": label, "run_id": run_id, "attributed_at": ts, **r} for r in records)
+        rows = [{"label": label, "run_id": run_id, "attributed_at": ts, **r} for r in records]
+        results.append({"run_id": run_id, "canary": canary_id, "rows": rows})
         spec = ledger.latest_by_run().get(run_id, {}).get("spec", "")
         ledger.record_event(
             "attributed",
@@ -94,13 +97,14 @@ def attribute_execution(
             cell={"canary": canary_id, "win": runspec.get("win", ""), "seed": runspec.get("seed", 0)},
             verdicts=[r["verdict"] for r in records],
         )
+    new_rows = [row for r in results for row in r["rows"]]
     if new_rows:
         path = workspace.attributions_path()
         path.parent.mkdir(parents=True, exist_ok=True)
         with path.open("a", encoding="utf-8") as f:
             for row in new_rows:
                 f.write(json.dumps(row) + "\n")
-    return new_rows
+    return results
 
 
 def _attributed_run_ids() -> set[str]:
@@ -180,20 +184,81 @@ def attribute_run(run_dir: Path, canary_dir: Path, *, strip: int = 1, target_dir
     return records
 
 
+def _print_execution_plan(label: str) -> int:
+    """Print what an execution-level attribution would judge — replay nothing."""
+    root = workspace.artifacts_dir(label)
+    if not root.is_dir():
+        print(f"no artifacts for execution {label!r}")
+        return 1
+    attributed = _attributed_run_ids()
+    print(f"attribution plan for {label}:")
+    for run_artifacts in sorted(root.iterdir()):
+        if not run_artifacts.is_dir():
+            continue
+        run_id = run_artifacts.name
+        runspec = _read_json(run_artifacts / "runspec.json")
+        canary_id = runspec.get("canary_id", "?")
+        if (run_artifacts / "error.json").is_file():
+            status = "failed run — skipped"
+        elif run_id in attributed:
+            status = "already attributed — skipped"
+        else:
+            try:
+                canary = load_canary(canary_id)
+                n = len([b for b in canary.bugs if b.fix])
+                status = f"to judge against {n} fix-carrying bug{'s' if n != 1 else ''}"
+            except RegistryError as e:
+                status = f"BLOCKED: {e}"
+        print(f"  {run_id} [{canary_id}]: {status}")
+    return 0
+
+
+def _print_execution_results(label: str, results: list[dict]) -> int:
+    """Print per-run verdicts and the tally; exit 1 when nothing confirmed."""
+    n_pocs = 0
+    confirmed: list[str] = []
+    for r in results:
+        verdicts = [row["verdict"] for row in r["rows"]]
+        n_pocs += len(verdicts)
+        confirmed.extend(v for v in verdicts if v.startswith("confirmed"))
+        line = ", ".join(verdicts) if verdicts else "no PoC evidence — marked attributed"
+        print(f"  {r['run_id']} [{r['canary']}]: {line}")
+    print(f"{len(results)} runs judged, {n_pocs} PoCs, confirmed: {len(confirmed)} → {workspace.attributions_path()}")
+    return 0 if confirmed else 1
+
+
 def main(argv: list[str] | None = None) -> int:
-    """Attribute all PoCs of an archived run and write attribution.json next to its run.json."""
+    """Attribute PoCs — one run dir, or a whole execution with --label."""
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    p.add_argument("run_dir", type=Path, help="a beam run dir (with poc/) or a single attempt dir (with workspace/ and run/)")
-    p.add_argument("--canary-dir", type=Path, required=True, help="canary directory holding bugs.json and fixes/")
-    p.add_argument("--strip", type=int, default=1, help="git apply -p N (default 1; PoC workspaces need 3)")
-    p.add_argument("--target-dir", default=".", help="where the target lives in the workspace (default .)")
+    p.add_argument("run_dir", type=Path, nargs="?", help="a beam run dir (with poc/) or a single attempt dir (with workspace/ and run/)")
+    p.add_argument("--label", help="attribute every finished run of this execution label")
+    p.add_argument("--force", action="store_true", help="re-attribute already-judged runs (new ground truth)")
+    p.add_argument("--dry-run", action="store_true", help="print the attribution plan, replay nothing")
+    p.add_argument("--canary-dir", type=Path, help="canary directory holding bugs.json and fixes/ (single-run mode)")
+    p.add_argument("--strip", type=int, default=None, help="git apply -p N (default: 1 single-run, 3 for executions)")
+    p.add_argument("--target-dir", default=None, help="where the target lives (default: . single-run, lib/target for executions)")
     p.add_argument("--timeout", type=int, default=900, help="seconds per replay (default 900)")
     p.add_argument("--keep", action="store_true", help="keep the scratch copies for inspection")
     p.add_argument("--no-write", action="store_true", help="print the records without writing attribution.json")
     args = p.parse_args(argv)
 
+    if args.label:
+        strip = args.strip if args.strip is not None else 3
+        target_dir = args.target_dir if args.target_dir is not None else "lib/target"
+        if args.dry_run:
+            return _print_execution_plan(args.label)
+        print(f"attributing execution {args.label} (strip={strip}, target-dir={target_dir})")
+        results = attribute_execution(args.label, force=args.force, strip=strip, target_dir=target_dir, timeout=args.timeout)
+        return _print_execution_results(args.label, results)
+
+    if not args.run_dir or not args.canary_dir:
+        p.error("single-run mode needs run_dir and --canary-dir (or use --label for an execution)")
+
     records = attribute_run(
-        args.run_dir, args.canary_dir, strip=args.strip, target_dir=args.target_dir, timeout=args.timeout, keep=args.keep,
+        args.run_dir, args.canary_dir,
+        strip=args.strip if args.strip is not None else 1,
+        target_dir=args.target_dir if args.target_dir is not None else ".",
+        timeout=args.timeout, keep=args.keep,
     )
     if not args.no_write:
         (args.run_dir / "attribution.json").write_text(json.dumps({"records": records}, indent=1) + "\n", encoding="utf-8")
