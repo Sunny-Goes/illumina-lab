@@ -36,6 +36,7 @@ from pathlib import Path
 from illumina_lab import workspace
 from illumina_lab.canaries.loader import load_canary
 from illumina_lab.judge import replay
+from illumina_lab.orchestrator import ledger
 
 
 def read_attributions() -> list[dict]:
@@ -66,7 +67,7 @@ def attribute_execution(
     root = workspace.artifacts_dir(label)
     if not root.is_dir():
         return []
-    attributed = set() if force else {row["run_id"] for row in read_attributions()}
+    attributed = set() if force else _attributed_run_ids()
     ts = (now or datetime.now(timezone.utc)).isoformat()
     new_rows: list[dict] = []
     for run_artifacts in sorted(root.iterdir()):
@@ -84,6 +85,15 @@ def attribute_execution(
         records = attribute_run(cache_run, canary.root, strip=strip, target_dir=target_dir, timeout=timeout)
         (cache_run / "attribution.json").write_text(json.dumps({"records": records}, indent=1) + "\n", encoding="utf-8")
         new_rows.extend({"label": label, "run_id": run_id, "attributed_at": ts, **r} for r in records)
+        spec = ledger.latest_by_run().get(run_id, {}).get("spec", "")
+        ledger.record_event(
+            "attributed",
+            run_id=run_id,
+            label=label,
+            spec=spec,
+            cell={"canary": canary_id, "win": runspec.get("win", ""), "seed": runspec.get("seed", 0)},
+            verdicts=[r["verdict"] for r in records],
+        )
     if new_rows:
         path = workspace.attributions_path()
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -91,6 +101,13 @@ def attribute_execution(
             for row in new_rows:
                 f.write(json.dumps(row) + "\n")
     return new_rows
+
+
+def _attributed_run_ids() -> set[str]:
+    """Return the run ids already judged: rows in the attributions log or an `attributed` ledger event (zero-PoC runs)."""
+    from_log = {row["run_id"] for row in read_attributions()}
+    from_ledger = {row["run_id"] for row in ledger.events() if row["event"] == "attributed"}
+    return from_log | from_ledger
 
 
 def _read_json(path: Path) -> dict:

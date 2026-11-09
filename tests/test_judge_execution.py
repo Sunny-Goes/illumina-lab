@@ -97,6 +97,30 @@ def test_failed_run_is_never_attributed(ws, store, monkeypatch):
     assert calls == []
 
 
+def test_attributed_event_lands_in_the_ledger(ws, store, monkeypatch):
+    _make_run(ws, "exp-x-20261109-1", "run-1")
+    _script_replay(monkeypatch)
+    attribute.attribute_execution("exp-x-20261109-1")
+    events = [json.loads(line) for line in workspace.ledger_path().read_text().splitlines()]
+    assert events[0]["event"] == "attributed"
+    assert events[0]["run_id"] == "run-1" and events[0]["verdicts"] == ["confirmed:b1"]
+    assert events[0]["cell"] == {"canary": "cb-snap", "win": "", "seed": 0}
+
+
+def test_zero_poc_run_is_marked_and_skipped(ws, store, monkeypatch):
+    # a finished run with no PoC evidence: no rows, but marked attributed — not retried forever
+    arts = ws / "artifacts" / "exp-x-20261109-1" / "run-1"
+    arts.mkdir(parents=True)
+    (arts / "runspec.json").write_text(json.dumps({"run_id": "run-1", "canary_id": "cb-snap"}))
+    (ws / "illumina-cache" / "beam" / "exp-x-20261109-1" / "run-1").mkdir(parents=True)
+    calls = _script_replay(monkeypatch)
+    assert attribute.attribute_execution("exp-x-20261109-1") == []
+    assert attribute.attribute_execution("exp-x-20261109-1") == []
+    assert calls == []
+    events = [json.loads(line) for line in workspace.ledger_path().read_text().splitlines()]
+    assert [e["event"] for e in events] == ["attributed"] and events[0]["verdicts"] == []
+
+
 def test_unknown_canary_fails_loud(ws, store, monkeypatch):
     _make_run(ws, "exp-x-20261109-1", "run-1")
     runspec = ws / "artifacts" / "exp-x-20261109-1" / "run-1" / "runspec.json"
