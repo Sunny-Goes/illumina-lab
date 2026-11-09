@@ -12,6 +12,7 @@ Layout:
     <workspace>/
     ├── ledger.jsonl                    # one row per run event (submit/start/finish/fail)
     ├── facts.jsonl                     # one row per harvested run
+    ├── attributions.jsonl              # one row per judged PoC (latest-wins per (run_id, poc))
     ├── artifacts/<label>/<run_id>/     # what the lab wrote about a run (spec, state dump, logs)
     └── illumina-cache/beam/<label>/    # the driver's ILLUMINA_CACHE — azimo's evidence tree
                                         #   (its RUN_LABEL nests per-execution under it)
@@ -41,6 +42,11 @@ def ledger_path() -> Path:
 def facts_path() -> Path:
     """Return the facts log's path (append-only JSONL)."""
     return workspace_root() / "facts.jsonl"
+
+
+def attributions_path() -> Path:
+    """Return the attributions log's path (append-only JSONL, latest-wins per ``(run_id, poc)``)."""
+    return workspace_root() / "attributions.jsonl"
 
 
 def artifacts_dir(label: str) -> Path:

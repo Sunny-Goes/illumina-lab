@@ -1,4 +1,8 @@
-"""Run-level attribution: every PoC of an archived run, judged against the canary's fixes.
+"""The lab's judge: replay and counterfactual attribution of PoC artifacts to ground-truth bugs.
+
+Run-level attribution: every PoC of an archived run, judged against the canary's fixes.
+Execution-level attribution (`attribute_execution`): every finished run of one execution,
+appended to the lab's attributions log.
 
 Discovery accepts either a beam run directory (``beam/<run_id>/`` holding
 ``poc/<hash>/attempt-*/``) or a single attempt directory (holding ``workspace/`` and
@@ -17,16 +21,84 @@ verdict follows the counterfactual table:
 - dies on none              → ``candidate-new-bug`` (or a different mechanism — human review).
 
 Records are written to ``attribution.json`` next to the run's ``run.json`` (or the attempt
-dir), so harvest can read them back without ever re-running replays (D4).
+dir), so harvest can read them back without ever re-running replays (D4), and appended to
+``attributions.jsonl`` — the lab-level judgment log, latest-wins per (run_id, poc), so
+re-attribution against *new* ground truth never rewrites history.
 """
 
 from __future__ import annotations
 
 import argparse
 import json
+from datetime import datetime, timezone
 from pathlib import Path
 
+from illumina_lab import workspace
+from illumina_lab.canaries.loader import load_canary
 from illumina_lab.judge import replay
+
+
+def read_attributions() -> list[dict]:
+    """Read every attribution row, in append order; empty when no log exists yet."""
+    path = workspace.attributions_path()
+    if not path.is_file():
+        return []
+    return [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
+
+
+def latest_attributions() -> dict[tuple[str, str], dict]:
+    """Return the judgment view: the newest row per (run_id, poc) — re-attribution never rewrites history."""
+    out: dict[tuple[str, str], dict] = {}
+    for row in read_attributions():
+        out[(row["run_id"], row["poc"])] = row
+    return out
+
+
+def attribute_execution(
+    label: str, *, force: bool = False, strip: int = 3, target_dir: str = "lib/target", timeout: int = 900, now: datetime | None = None
+) -> list[dict]:
+    """Attribute every finished run of one execution against its canary's fixes.
+
+    Skips failed runs (``error.json``) and already-attributed runs unless ``force``
+    (re-attribution is how new ground truth reaches old runs — latest-wins in the log).
+    ``strip``/``target_dir`` default to azimo's PoC workspace layout. Returns the new rows.
+    """
+    root = workspace.artifacts_dir(label)
+    if not root.is_dir():
+        return []
+    attributed = set() if force else {row["run_id"] for row in read_attributions()}
+    ts = (now or datetime.now(timezone.utc)).isoformat()
+    new_rows: list[dict] = []
+    for run_artifacts in sorted(root.iterdir()):
+        if not run_artifacts.is_dir():
+            continue
+        run_id = run_artifacts.name
+        if run_id in attributed or (run_artifacts / "error.json").is_file():
+            continue
+        runspec = _read_json(run_artifacts / "runspec.json")
+        canary_id = runspec.get("canary_id", "")
+        cache_run = workspace.illumina_cache() / "beam" / label / run_id
+        if not canary_id or not cache_run.is_dir():
+            continue
+        canary = load_canary(canary_id)
+        records = attribute_run(cache_run, canary.root, strip=strip, target_dir=target_dir, timeout=timeout)
+        (cache_run / "attribution.json").write_text(json.dumps({"records": records}, indent=1) + "\n", encoding="utf-8")
+        new_rows.extend({"label": label, "run_id": run_id, "attributed_at": ts, **r} for r in records)
+    if new_rows:
+        path = workspace.attributions_path()
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with path.open("a", encoding="utf-8") as f:
+            for row in new_rows:
+                f.write(json.dumps(row) + "\n")
+    return new_rows
+
+
+def _read_json(path: Path) -> dict:
+    """Read one JSON artifact; absent or malformed reads as empty (attribution never dies on a partial run)."""
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {}
 
 
 def discover_pocs(run_dir: Path) -> list[dict]:
