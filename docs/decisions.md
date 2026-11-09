@@ -93,3 +93,7 @@ The PoC→bug binding is an experiment, not a location inference: replay the PoC
 ## D23 — Fix patches are per-bug, snapshot-applicable, bisect-identified
 
 The counterfactual judge assumes each bug's fix is one isolated patch that applies cleanly to the pinned snapshot. Curation enforces it temporally: the pin must be an ancestor of every fix commit (all bugs present at the snapshot); when the fixing commit is uncertain, the reference PoC identifies it — replayed along first-parent history, the first commit where the PoC stops passing is the fix (git bisect with the PoC as the test). Stacked fixes are rebased onto the snapshot (`git apply --check` against the snapshot tree); a commit fixing several bugs is split into single-bug commits in the curation fork; truly inseparable bugs merge into one entry with a note. Patches apply independently to the snapshot, never cumulatively. The procedure lives in the training set's authoring methodology; this entry records the invariant the judge relies on.
+
+## D24 — `target_subdir` rides the pointer
+
+The subtree materialized as the audit/PoC target (`packages/contracts` for vechain, `barretenberg/sol` for honk) is layout metadata, not ground truth — it belongs on the leak-safe `CanaryPointer` so `ci/certify.sh` and the future PoC scaffold read one source of truth. Path-validated: relative, no traversal.
