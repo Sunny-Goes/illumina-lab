@@ -37,9 +37,26 @@ The full register with rationale lives in [docs/decisions.md](docs/decisions.md)
 - Observability improvements go upstream into azimo ([#172](https://github.com/Sunny-Goes/azimo/issues/172)), not into lab workarounds.
 - The optimizer is a separate repo behind a three-part contract (experiment API, workspace + editable surface, fitness); [harness2](https://github.com/Sunny-Goes/harness2) is a candidate citizen.
 
+## Development setup
+
+```bash
+git clone --recurse-submodules https://github.com/Sunny-Goes/illumina-lab.git
+```
+
+azimo (the engine under test) is a submodule at `vendor/azimo`: **a pinned pointer, not a copy**. This repo commits only a gitlink (azimo's URL + a recorded commit SHA); azimo's files never enter this repo's history — `--recurse-submodules` fetches them from azimo's own repo at exactly that commit. Moving the pin is `git -C vendor/azimo checkout <sha-or-branch>` plus committing the new gitlink. Currently pinned to the head of azimo PR [#171](https://github.com/Sunny-Goes/azimo/pull/171) (`drop-poc-templates`); it moves to `main` once that lands, and later to autoresearch branches as the optimizer produces them.
+
+### The two venvs
+
+Two Python environments, never mixed (D9):
+
+- **The engine's**: `cd vendor/azimo && uv sync` → `vendor/azimo/.venv`, locked by azimo's own `uv.lock`. Nothing is ever installed into it beyond that lockfile — the engine under test runs in a byte-predictable environment.
+- **The lab's**: `uv sync` at the lab root → `.venv`, holding the lab's code and dev tools only.
+
+When the lab launches a beam (the driver, arriving in PR 4), the subprocess runs *azimo's* interpreter (`vendor/azimo/.venv/bin/python`) and sees the lab's code through `PYTHONPATH=<repo>/src` set at spawn — so the driver shares the lab's schemas without installing anything into the engine's environment.
+
 ## Status & roadmap
 
-Template stage — the repo is being set up. See [docs/roadmap.md](docs/roadmap.md) for full milestone definitions.
+v0 underway — PR 1 (foundation). See [docs/roadmap.md](docs/roadmap.md) for full milestone definitions and [docs/plans/v0.md](docs/plans/v0.md) for the PR plan.
 
 | milestone | goal |
 | --- | --- |
