@@ -81,3 +81,12 @@ def test_pointer_serialization_never_carries_ground_truth():
     dumped = CanaryPointer(id="c", pack="honk", target="t", snapshot_sha=SHA).model_dump()
     for key in ("bugs", "files", "severity", "fix", "sites", "reference_poc"):
         assert key not in dumped
+
+
+def test_pointer_target_subdir_is_safe_relative_path():
+    p = CanaryPointer(id="c", pack="honk", target="t", snapshot_sha=SHA, target_subdir="packages/contracts")
+    assert p.target_subdir == "packages/contracts"
+    assert CanaryPointer(id="c", pack="honk", target="t", snapshot_sha=SHA).target_subdir == ""
+    for bad in ("/abs/path", "packages/../secrets"):
+        with pytest.raises(ValidationError, match="target_subdir"):
+            CanaryPointer(id="c", pack="honk", target="t", snapshot_sha=SHA, target_subdir=bad)

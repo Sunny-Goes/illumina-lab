@@ -115,12 +115,21 @@ class CanaryPointer(BaseModel):
     snapshot_sha: str
     links: list[str] = []
     notes: str = ""
+    target_subdir: str = ""  # the in-repo subtree materialized as the audit/PoC target ("" = repo default)
 
     @field_validator("id", "pack", "target")
     @classmethod
     def _kebab_ids(cls, v: str) -> str:
         """Require kebab-case ids — they become path and ledger components."""
         return _kebab(v)
+
+    @field_validator("target_subdir")
+    @classmethod
+    def _safe_subdir(cls, v: str) -> str:
+        """Reject absolute paths and traversal — the value becomes a path segment."""
+        if v.startswith("/") or ".." in v.split("/"):
+            raise ValueError(f"target_subdir must be a relative, non-traversing path, got {v!r}")
+        return v
 
     @field_validator("snapshot_sha")
     @classmethod
