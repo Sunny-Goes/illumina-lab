@@ -42,7 +42,7 @@ def _make_run(ws, label, run_id, *, poc_ok=True, failed=False):
     (attempt / "workspace").mkdir(parents=True)
     (attempt / "workspace" / "foundry.toml").write_text("")
     (attempt / "run").mkdir()
-    (attempt / "run" / "run.json").write_text(json.dumps({"ok": poc_ok}))
+    (attempt / "run" / "run.json").write_text(json.dumps({"ok": poc_ok, "command": "forge test --match-contract PocTest -vvv"}))
 
 
 def _script_replay(monkeypatch, fixed_result="fail"):
@@ -138,8 +138,21 @@ def test_cli_attribute_label_prints_verdicts(ws, store, monkeypatch, capsys):
     rc = attribute.main(["--label", "exp-x-20261109-1"])
     out = capsys.readouterr().out
     assert rc == 0
-    assert "run-1 [cb-snap]: confirmed:b1" in out
+    assert "run-1 [cb-snap]:" in out
+    assert "abc123/attempt-1: confirmed:b1" in out
     assert "1 runs judged, 1 PoCs, confirmed: 1" in out
+
+
+def test_cli_attribute_single_run_prints_readable_table(ws, store, monkeypatch, capsys):
+    _make_run(ws, "exp-x-20261109-1", "run-1")
+    _script_replay(monkeypatch)
+    run_dir = ws / "illumina-cache" / "beam" / "exp-x-20261109-1" / "run-1"
+    rc = attribute.main([str(run_dir), "--canary-dir", str(store / "canaries" / "cb" / "snap"), "--no-write"])
+    out = capsys.readouterr().out
+    assert rc == 0
+    assert "command:    forge test" in out
+    assert "verdict:    confirmed:b1" in out
+    assert "fixed[b1]: fail" in out
 
 
 def test_cli_attribute_dry_run_replays_nothing(ws, store, monkeypatch, capsys):

@@ -138,6 +138,7 @@ def discover_pocs(run_dir: Path) -> list[dict]:
             "id": str(attempt),
             "workspace": attempt / "workspace",
             "recorded_ok": bool(recorded.get("ok")),
+            "command": recorded.get("command", ""),
         })
     return out
 
@@ -175,7 +176,7 @@ def attribute_run(run_dir: Path, canary_dir: Path, *, strip: int = 1, target_dir
     bugs = [b for b in json.loads((canary_dir / "bugs.json").read_text(encoding="utf-8")) if b.get("fix")]
     records = []
     for poc in discover_pocs(run_dir):
-        record: dict = {"poc": poc["id"], "workspace": str(poc["workspace"])}
+        record: dict = {"poc": poc["id"], "workspace": str(poc["workspace"]), "command": poc["command"]}
         if not poc["recorded_ok"]:
             record["verdict"] = "not-a-valid-exploit"
         else:
@@ -213,16 +214,35 @@ def _print_execution_plan(label: str) -> int:
     return 0
 
 
+def _print_record(record: dict) -> None:
+    """Print one PoC, human-readable: what ran, the verdict, the per-bug outcomes."""
+    poc = record["poc"]
+    short = f"…{poc[-30:]}" if len(poc) > 30 else poc
+    print(f"• {short}")
+    if record.get("command"):
+        print(f"    command:    {record['command']}")
+    print(f"    verdict:    {record['verdict']}")
+    if record.get("detail"):
+        print(f"    detail:     {record['detail']}")
+    for bug, result in (record.get("fixed") or {}).items():
+        print(f"    fixed[{bug}]: {result}")
+    print(f"    workspace:  {record['workspace']}")
+
+
 def _print_execution_results(label: str, results: list[dict]) -> int:
     """Print per-run verdicts and the tally; exit 1 when nothing confirmed."""
     n_pocs = 0
     confirmed: list[str] = []
     for r in results:
-        verdicts = [row["verdict"] for row in r["rows"]]
-        n_pocs += len(verdicts)
-        confirmed.extend(v for v in verdicts if v.startswith("confirmed"))
-        line = ", ".join(verdicts) if verdicts else "no PoC evidence — marked attributed"
-        print(f"  {r['run_id']} [{r['canary']}]: {line}")
+        print(f"  {r['run_id']} [{r['canary']}]:")
+        if not r["rows"]:
+            print("    no PoC evidence — marked attributed")
+        for row in r["rows"]:
+            n_pocs += 1
+            confirmed.extend([row["verdict"]] if row["verdict"].startswith("confirmed") else [])
+            poc = row["poc"]
+            short = poc.split("/poc/")[-1] if "/poc/" in poc else poc
+            print(f"    {short}: {row['verdict']}")
     print(f"{len(results)} runs judged, {n_pocs} PoCs, confirmed: {len(confirmed)} → {workspace.attributions_path()}")
     return 0 if confirmed else 1
 
@@ -239,6 +259,7 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--target-dir", default=None, help="where the target lives (default: . single-run, lib/target for executions)")
     p.add_argument("--timeout", type=int, default=900, help="seconds per replay (default 900)")
     p.add_argument("--keep", action="store_true", help="keep the scratch copies for inspection")
+    p.add_argument("--json", action="store_true", help="print the raw records as JSON instead of the readable table")
     p.add_argument("--no-write", action="store_true", help="print the records without writing attribution.json")
     args = p.parse_args(argv)
 
@@ -262,7 +283,11 @@ def main(argv: list[str] | None = None) -> int:
     )
     if not args.no_write:
         (args.run_dir / "attribution.json").write_text(json.dumps({"records": records}, indent=1) + "\n", encoding="utf-8")
-    print(json.dumps({"records": records}, indent=1))
+    if args.json:
+        print(json.dumps({"records": records}, indent=1))
+    else:
+        for record in records:
+            _print_record(record)
     return 0 if any(r["verdict"].startswith("confirmed") for r in records) else 1
 
 
