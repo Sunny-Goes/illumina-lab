@@ -73,3 +73,23 @@ Explicit over terse (`lab` would collide): `illumina-lab = illumina_lab.cli:main
 ## D18 — The lab compares executors, not just illumina versions
 
 The Runner protocol and the facts/judge/fitness pipeline are executor-agnostic. A baseline agent — a vanilla prompted agent, or an off-the-shelf coding agent via harness2's substrates — is a second driver behind the same Runner seam, run against the same canaries, harvested into the same facts schema, joined to the same ground truth, scored by the same fitness. That yields the "illumina vs a normal agent" scoreboard: the baseline every illumina improvement claim is measured against. Pinned external baselines live under `vendor/` like azimo.
+
+## D19 — Canary data lives in the training-set from day one
+
+No in-lab fixtures: the lab's first canaries (the four seeded honk snapshots) were authored directly in `illumina-training-set`, pinned as `vendor/illumina-training-set`. The format is validated against its final home immediately, ground truth is version-pinned (every experiment records which training-set SHA judged it), and v1 has no migration. Lab unit tests use synthetic tmp_path stores; integration tests use the submodule.
+
+## D20 — The leak boundary is a type boundary
+
+Execution stages are typed to accept only `CanaryPointer` (id/pack/target/snapshot_sha) — a type with no ground-truth fields — so "ground truth never reaches the detector" (D8) is enforced by the shapes, not by discipline. Only the judge receives a full `Canary` (pointer + bugs). The runner builds its subprocess env from a pointer, so no code path can serialize the answer key into a run.
+
+## D21 — Folds split by codebase namespace
+
+The training-set groups snapshots under `canaries/<codebase>/`, so one codebase may carry several snapshots (different commits, different coexisting bug subsets). Train/eval/test splits therefore assign whole namespaces to folds, never individual snapshots or bugs — two plether snapshots in different folds would leak codebase-specific tuning into the test fold.
+
+## D22 — Attribution is counterfactual, not inferential
+
+The PoC→bug binding is an experiment, not a location inference: replay the PoC on the vulnerable snapshot (must win) and on the same snapshot with the bug's fix patch applied (must die). Causally sound, LLM-free, and independent of detector internals — it survives the no-invariant engine future untouched. Validity comes first in the verdict table (a PoC that doesn't win on the buggy code is not an exploit, whatever its intent), and a patch that merely breaks the PoC's build is `patch-incompatible`, never a kill. The cost shifts to curation: each attributable bug carries an isolated fix patch plus a certification reference PoC in the training set, enforced by its CI. Scope is the found end only — the miss taxonomy (never-read / read-unsuspected / deduped / dismissed, per-bug stage ladder) stays designed, deferred past v0. PoC workspaces are read from azimo's cache behind `judge/attribute.py`'s discovery seam for v0; archival arrives with remote runners.
+
+## D23 — Fix patches are per-bug, snapshot-applicable, bisect-identified
+
+The counterfactual judge assumes each bug's fix is one isolated patch that applies cleanly to the pinned snapshot. Curation enforces it temporally: the pin must be an ancestor of every fix commit (all bugs present at the snapshot); when the fixing commit is uncertain, the reference PoC identifies it — replayed along first-parent history, the first commit where the PoC stops passing is the fix (git bisect with the PoC as the test). Stacked fixes are rebased onto the snapshot (`git apply --check` against the snapshot tree); a commit fixing several bugs is split into single-bug commits in the curation fork; truly inseparable bugs merge into one entry with a note. Patches apply independently to the snapshot, never cumulatively. The procedure lives in the training set's authoring methodology; this entry records the invariant the judge relies on.

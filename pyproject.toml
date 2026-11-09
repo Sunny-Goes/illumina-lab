@@ -4,7 +4,9 @@ version = "0.0.1"
 description = "Evaluation and experimentation harness for illumina — canary runs, facts, pluggable fitness."
 license = { text = "MIT" }
 requires-python = ">=3.10"
-dependencies = []
+dependencies = [
+    "pydantic>=2.9",
+]
 
 [dependency-groups]
 dev = [
@@ -19,6 +21,9 @@ norecursedirs = ["vendor"]  # the engine's suite runs in the engine's env, never
 markers = [
     "live: tests that run real illumina beams through azimo (real tokens, real minutes) — run only with ILAB_LIVE_TESTS=1",
 ]
+
+[project.scripts]
+illumina-lab = "illumina_lab.cli:main"
 
 [build-system]
 requires = ["setuptools>=73.0.0", "wheel"]
@@ -45,5 +50,6 @@ lint.ignore = [
 ]
 [tool.ruff.lint.per-file-ignores]
 "tests/*" = ["D", "UP"]
+"src/illumina_lab/driver.py" = ["T201"]  # the driver's prints are its log lines — the runner tees them to driver.log
 [tool.ruff.lint.pydocstyle]
 convention = "google"
